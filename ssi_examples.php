@@ -5,10 +5,10 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 // Special thanks to Spaceman-Spiff for his contributions to this page.
@@ -32,9 +32,8 @@ if (isset($_GET['view']) && $_GET['view'] == 'home1')
 // Load the main template.
 template_ssi_above();
 ?>
-
 			<h2>SMF SSI.php Functions</h2>
-			<p><strong>Current Version:</strong> 2.1 Alpha 1</p>
+			<p><strong>Current Version:</strong> 2.1 Beta 3</p>
 			<p>This file is used to demonstrate the capabilities of SSI.php using PHP include functions. The examples show the include tag, then the results of it.</p>
 
 			<h2>Include Code</h2>
@@ -44,10 +43,10 @@ template_ssi_above();
 			<h2>Some notes on usage</h2>
 			<p>All the functions have an output method parameter.  This can either be &quot;echo&quot; (the default) or &quot;array&quot;</p>
 			<p>If it is &quot;echo&quot;, the function will act normally - otherwise, it will return an array containing information about the requested task. For example, it might return a list of topics for ssi_recentTopics.</p>
-			<p onclick="if (getInnerHTML(this).indexOf('Bird') == -1) setInnerHTML(this, getInnerHTML(this) + '<br /><img src=&quot;http://www.simplemachines.org/images/chocobo.jpg&quot; title=&quot;Bird-san&quot; alt=&quot;Chocobo!&quot; />'); return false;">This functionality can be used to allow you to present the information in any way you wish.</p>
+			<p onclick="if (getInnerHTML(this).indexOf('Bird') == -1) setInnerHTML(this, getInnerHTML(this) + '<br><img src=&quot;http://www.simplemachines.org/images/chocobo.jpg&quot; title=&quot;Bird-san&quot; alt=&quot;Chocobo!&quot;>'); return false;">This functionality can be used to allow you to present the information in any way you wish.</p>
 
 			<h2>Additional Guides &amp; FAQ</h2>
-			<p>Need more information on using SSI.php? Check out <a href="http://docs.simplemachines.org/index.php?topic=400.0">Using SSI.php article</a> or <a href="http://www.simplemachines.org/community/index.php?topic=14906.0">the SSI FAQ</a>.</p>
+			<p>Need more information on using SSI.php? Check out <a href="http://wiki.simplemachines.org/smf/Category:SSI">Using SSI.php article</a>.</p>
 
 			<div id="sidenav" class="windowbg">
 				<span class="topslice"><span></span></span>
@@ -91,7 +90,7 @@ template_ssi_above();
 						<li><a href="#" onclick="showSSIBlock('ssi_recentAttachments'); return false;">Recent Attachments</a></li>
 					</ul>
 					<?php if ($user_info['is_admin']) { ?>
-					<h3>Advanced Functions <img class="help" title="Functions that require additional tweaking, not just copy and paste." src="<?php echo $settings['images_url']; ?>/helptopics.png" alt="" /></h3>
+					<h3>Advanced Functions <img class="help" title="Functions that require additional tweaking, not just copy and paste." src="<?php echo $settings['images_url']; ?>/helptopics.png" alt=""></h3>
 					<ul>
 						<li><a href="#" onclick="showSSIBlock('ssi_showPoll'); return false;">Show Single Poll</a></li>
 						<li><a href="#" onclick="showSSIBlock('ssi_fetchPosts'); return false;">Show Single Post</a></li>
@@ -363,8 +362,7 @@ template_ssi_above();
 
 			<div class="ssi_preview" id="ssi_fetchPosts">
 				<h2>Show Single Post</h2>
-				<p>Fetches a post with a particular IDs. By default will only show if you have permission to the see
-				the board in question. This can be overriden by passing the 2nd parameter as <tt>true</tt>.</p>
+				<p>Fetches a post with a particular IDs. By default will only show if you have permission to the see the board in question. This can be overridden by passing the 2nd parameter as true.</p>
 
 				<h3>Code</h3>
 				<div class="codeheader">Code: <a href="javascript:void(0);" onclick="return smfSelectText(this);" class="codeoperation">[Select]</a></div><code class="bbc_code">&lt;?php ssi_fetchPosts($postIDs, $isOverride); ?&gt;</code>
@@ -398,9 +396,9 @@ template_ssi_above();
 				ssi_recentTopics() is fetched using the array method, to allow further customizations on the output.
 
 				<h3>Code</h3>
-				<div class="codeheader">Code: <a href="javascript:void(0);" onclick="return smfSelectText(this);" class="codeoperation">[Select]</a></div><code class="bbc_code"><?php echo htmlspecialchars(template_homepage_sample1('source')); ?></code>
+				<div class="codeheader">Code: <a href="javascript:void(0);" onclick="return smfSelectText(this);" class="codeoperation">Select</a></div><code class="bbc_code"><?php echo htmlspecialchars(template_homepage_sample1('source')); ?></code>
 				<h3>Result</h3>
-				<iframe src="?view=home1" width="99%" height="300"></iframe>
+				<iframe src="?view=home1" style="width:99%; height:300px;"></iframe>
 			</div>
 		</div>
 		<span class="botslice"><span></span></span>
@@ -414,84 +412,68 @@ function template_ssi_above()
 {
 	global $settings, $context, $scripturl;
 
-	echo '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+	echo '<!DOCTYPE html>
+<html>
 	<head>
-		<title>SMF 2.1 Alpha 1 SSI.php Examples</title>
-		<link rel="stylesheet" type="text/css" href="', $settings['default_theme_url'], '/css/index.css?alp21" />
-		<script type="text/javascript" src="', $settings['default_theme_url'], '/scripts/script.js"></script>
-		<style type="text/css">
-			#wrapper
-			{
+		<title>SMF 2.1 Beta 3 SSI.php Examples</title>
+		<link rel="stylesheet" href="', $settings['default_theme_url'], '/css/index.css?alp21">
+		<script src="', $settings['default_theme_url'], '/scripts/script.js"></script>
+		<style>
+			#wrapper {
 				width: 90%;
 			}
-			#upper_section .user
-			{
+			#upper_section .user {
 				height: 4em;
 			}
-			#upper_section .news
-			{
+			#upper_section .news {
 				height: 80px;
 			}
-			#content_section
-			{
+			#content_section {
 				position: relative;
-				top: -20px;
 			}
-			#main_content_section h2
-			{
+			#main_content_section h2 {
 				font-size: 1.5em;
 				border-bottom: solid 1px #d05800;
 				line-height: 1.5em;
 				margin: 0.5em 0;
 				color: #d05800;
 			}
-			#liftup
-			{
-				position: relative;
+			#liftup {
 				top: -70px;
 				padding: 1em 2em 1em 1em;
 				line-height: 1.6em;
 			}
-			#footer_section
-			{
+			#footer {
 				position: relative;
-				top: -20px;
 			}
-			#sidenav
-			{
+			#sidenav {
 				width: 210px;
 				float: left;
 				margin-right: 20px;
 			}
-			#sidenav ul
-			{
+			#sidenav ul {
 				margin: 0 0 0 15px;
 				padding: 0;
 				list-style: none;
 				font-size: 90%;
 			}
-			#preview
-			{
+			#preview {
 				margin-left: 230px;
 			}
-			.ssi_preview
-			{
+			.ssi_preview {
 				margin-bottom: 1.5em;
 			}
-			.ssi_preview h3
-			{
+			.ssi_preview h3 {
 				margin: 1em 0 0.5em 0;
 			}
-			.ssi_result
-			{
+			.ssi_result {
 				background-color: #fff;
 				border: 1px solid #99a;
 				padding: 10px;
 				overflow: hidden;
 			}
 		</style>
-		<script type="text/javascript"><!-- // --><![CDATA[
+		<script>
 			var smf_scripturl = "', $scripturl, '";
 			var smf_iso_case_folding = ', $context['server']['iso_case_folding'] ? 'true' : 'false', ';
 			var smf_charset = "', $context['character_set'], '";
@@ -515,41 +497,38 @@ function template_ssi_above()
 					oSections[i].style.display = bHide ? "none" : "block";
 				}
 			}
-		// ]]></script>
+		</script>
 	</head>
 	<body>
+		<div id="header">
+			<h1 class="forumtitle">SMF 2.1 Beta 3 SSI.php Examples</h1>
+			<img id="smflogo" src="Themes/default/images/smflogo.png" alt="Simple Machines Forum" title="Simple Machines Forum">
+		</div>
 		<div id="wrapper">
-			<div id="header"><div class="frame">
-				<div id="top_section">
-					<h1 class="forumtitle">SMF 2.1 Alpha 1 SSI.php Examples</h1>
-					<img id="smflogo" src="Themes/default/images/smflogo.png" alt="Simple Machines Forum" title="Simple Machines Forum" />
-				</div>
-				<div id="upper_section" class="middletext" style="overflow: hidden;">
-					<div class="user"></div>
-					<div class="news normaltext">
-					</div>
-				</div>
-			</div></div>
-			<div id="content_section"><div class="frame">
+			<div id="upper_section"><p><br></p></div>
+			<div id="content_section">
 				<div id="main_content_section">
 					<div id="liftup" class="flow_auto">';
 }
 
 function template_ssi_below()
 {
-	global $time_start;
-
 	echo '
-						<script type="text/javascript"><!-- // --><![CDATA[
+						<script>
 							showSSIBlock("ssi_recentTopics");
-						// ]]></script>
+						</script>
 					</div>
 				</div>
-			</div></div>
-			<div id="footer_section"><div class="frame">
-				<div class="smalltext"><a href="http://www.simplemachines.org">Simple Machines Forum</a></div>
-			</div></div>
+			</div>
 		</div>
+			<div id="footer">
+				<a href="#header" id="bot" class="go_up"></a>
+				<ul>
+					<li class="copyright">
+						<span class="smalltext"><a href="http://www.simplemachines.org">Simple Machines Forum</a></span>
+					</li>
+				</ul>
+			</div>
 	</body>
 </html>';
 }
@@ -558,11 +537,11 @@ function template_homepage_sample1($method = 'source')
 {
 	global $user_info, $boarddir;
 
-	$header = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+	$header = '<!DOCTYPE html>
+<html>
 <head>
 	<title>SSI.php example for home page</title>
-	<style type="text/css">
+	<style>
 		body { font-family: Arial, Tahoma, sans-serif; font-size: 80%; background: #DFDFDF; color: #FFFFFF; margin: 0 }
 		ul,ol { padding-left: 19px; margin: 0; }
 		li { font-size: 11px; }
@@ -570,7 +549,6 @@ function template_homepage_sample1($method = 'source')
 		h3 { font-size: 15px; }
 		a:link,a:visited { color: #FF9000; text-decoration: none; }
 		a:hover { text-decoration: underline; }
-
 		#container { background: #52514E; width: 100%; border: 1px solid midnightblue; line-height: 150%; margin: 0; }
 		#header,#footer { color: lightgray; background-color: #2A2825; clear: both; padding: .5em; }
 		#leftbar { background: #DF7E00; float: left; width: 160px; margin: 0; padding: 1em; }
@@ -594,7 +572,7 @@ function template_homepage_sample1($method = 'source')
 
 	$footer = '
 	<div id="footer">
-		<a target="_blank" rel="license" href="http://creativecommons.org/licenses/publicdomain/"><img alt="Creative Commons License" style="border-width:0" src="http://i.creativecommons.org/l/publicdomain/88x31.png" /></a>
+		<a target="_blank" rel="license" href="http://creativecommons.org/licenses/publicdomain/"><img alt="Creative Commons License" style="border-width:0" src="http://i.creativecommons.org/l/publicdomain/88x31.png"></a>
 		This sample website layout is dedicated to the <a target="_blank" rel="license" href="http://creativecommons.org/licenses/publicdomain/">Public Domain</a>.
 	</div>
 </div>
@@ -629,7 +607,7 @@ function template_homepage_sample1_php()
 
 	echo '
 
-		</ul><br />
+		</ul><br>
 
 		<h3>Online Users</h3>';
 		ssi_logOnline();
@@ -641,7 +619,7 @@ function template_homepage_sample1_php()
 
 		ssi_welcome();
 		echo '
-		<br /><br />
+		<br><br>
 
 		<h2>News</h2>';
 
@@ -670,15 +648,17 @@ foreach ($topics as $topic)
 
 unset($topics);
 ?>
-		</ul><br />
+		</ul><br>
 		<h3>Online Users</h3>
 		<?php ssi_logOnline(); ?>
 	</div>
 	<div id="content">
-		<?php ssi_welcome(); ?><br /><br />
+		<?php ssi_welcome(); ?><br><br>
 		<h2>News</h2>
 		<?php ssi_boardNews(); ?>
 	</div>';
 
 	return $result;
 }
+
+?>

@@ -7,14 +7,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Add the functions implemented in this file to the $smcFunc array.
@@ -27,17 +27,17 @@ function db_extra_init()
 		$smcFunc += array(
 			'db_backup_table' => 'smf_db_backup_table',
 			'db_optimize_table' => 'smf_db_optimize_table',
-			'db_insert_sql' => 'smf_db_insert_sql',
 			'db_table_sql' => 'smf_db_table_sql',
 			'db_list_tables' => 'smf_db_list_tables',
 			'db_get_version' => 'smf_db_get_version',
+			'db_get_engine' => 'smf_db_get_engine',
 		);
 }
 
 /**
  * Backup $table to $backup_table.
- * @param string $table
- * @param string $backup_table
+ * @param string $table The name of the table to backup
+ * @param string $backup_table The name of the backup table for this table
  * @return resource -the request handle to the table creation query
  */
 function smf_db_backup_table($table, $backup_table)
@@ -169,12 +169,12 @@ function smf_db_backup_table($table, $backup_table)
 
 /**
  * This function optimizes a table.
- * @param string $table - the table to be optimized
- * @return how much it was gained
+ * @param string $table The table to be optimized
+ * @return int How much space was gained
  */
 function smf_db_optimize_table($table)
 {
-	global $smcFunc, $db_name, $db_prefix;
+	global $smcFunc, $db_prefix;
 
 	$table = str_replace('{db_prefix}', $db_prefix, $table);
 
@@ -216,9 +216,10 @@ function smf_db_optimize_table($table)
 /**
  * This function lists all tables in the database.
  * The listing could be filtered according to $filter.
- * @param mixed $db, string holding the table name, or false, default false
- * @param mixed $filter, string to filter by, or false, default false
- * @return array, an array of table names. (strings)
+ *
+ * @param string|boolean $db string The database name or false to use the current DB
+ * @param string|boolean $filter String to filter by or false to list all tables
+ * @return array An array of table names
  */
 function smf_db_list_tables($db = false, $filter = false)
 {
@@ -246,86 +247,10 @@ function smf_db_list_tables($db = false, $filter = false)
 }
 
 /**
- * Gets all the necessary INSERTs for the table named table_name.
- * It goes in 250 row segments.
- * @param string $tableName - the table to create the inserts for.
- * @return string, the query to insert the data back in, or an empty
- *  string if the table was empty.
- */
-function smf_db_insert_sql($tableName, $new_table = false)
-{
-	global $smcFunc, $db_prefix;
-	static $start = 0, $num_rows, $fields, $limit;
-
-	if ($new_table)
-	{
-		$limit = strstr($tableName, 'log_') !== false ? 500 : 250;
-		$start = 0;
-	}
-
-	$data = '';
-	$tableName = str_replace('{db_prefix}', $db_prefix, $tableName);
-
-	// This will be handy...
-	$crlf = "\r\n";
-
-	$result = $smcFunc['db_query']('', '
-		SELECT /*!40001 SQL_NO_CACHE */ *
-		FROM `' . $tableName . '`
-		LIMIT ' . $start . ', ' . $limit,
-		array(
-			'security_override' => true,
-		)
-	);
-
-	// The number of rows, just for record keeping and breaking INSERTs up.
-	$num_rows = $smcFunc['db_num_rows']($result);
-
-	if ($num_rows == 0)
-		return '';
-
-	if ($new_table)
-	{
-		$fields = array_keys($smcFunc['db_fetch_assoc']($result));
-		$smcFunc['db_data_seek']($result, 0);
-	}
-
-	// Start it off with the basic INSERT INTO.
-	$data = 'INSERT INTO `' . $tableName . '`' . $crlf . "\t" . '(`' . implode('`, `', $fields) . '`)' . $crlf . 'VALUES ';
-
-	// Loop through each row.
-	while ($row = $smcFunc['db_fetch_assoc']($result))
-	{
-		// Get the fields in this row...
-		$field_list = array();
-
-		foreach ($row as $key => $item)
-		{
-			// Try to figure out the type of each field. (NULL, number, or 'string'.)
-			if (!isset($item))
-				$field_list[] = 'NULL';
-			elseif (is_numeric($item) && (int) $item == $item)
-				$field_list[] = $item;
-			else
-				$field_list[] = '\'' . $smcFunc['db_escape_string']($item) . '\'';
-		}
-
-		$data .= '(' . implode(', ', $field_list) . ')' . ',' . $crlf . "\t";
-	}
-
-	$smcFunc['db_free_result']($result);
-	$data = substr(trim($data), 0, -1) . ';' . $crlf . $crlf;
-
-	$start += $limit;
-
-	return $data;
-}
-
-/**
  * Dumps the schema (CREATE) for a table.
  * @todo why is this needed for?
- * @param string $tableName - the table
- * @return string - the CREATE statement as string
+ * @param string $tableName The name of the table
+ * @return string The "CREATE TABLE" SQL string for this table
  */
 function smf_db_table_sql($tableName)
 {
@@ -415,7 +340,7 @@ function smf_db_table_sql($tableName)
 		$schema_create .= ',' . $crlf . ' ' . $keyname . ' (' . implode($columns, ', ') . ')';
 	}
 
-	// Now just get the comment and type... (MyISAM, etc.)
+	// Now just get the comment and engine... (MyISAM, etc.)
 	$result = $smcFunc['db_query']('', '
 		SHOW TABLE STATUS
 		LIKE {string:table}',
@@ -427,17 +352,22 @@ function smf_db_table_sql($tableName)
 	$smcFunc['db_free_result']($result);
 
 	// Probably MyISAM.... and it might have a comment.
-	$schema_create .= $crlf . ') ENGINE=' . (isset($row['Type']) ? $row['Type'] : $row['Engine']) . ($row['Comment'] != '' ? ' COMMENT="' . $row['Comment'] . '"' : '');
+	$schema_create .= $crlf . ') ENGINE=' . $row['Engine'] . ($row['Comment'] != '' ? ' COMMENT="' . $row['Comment'] . '"' : '');
 
 	return $schema_create;
 }
 
 /**
  *  Get the version number.
- *  @return string - the version
+ *  @return string The version
  */
 function smf_db_get_version()
 {
+	static $ver;
+
+	if (!empty($ver))
+		return $ver;
+
 	global $smcFunc;
 
 	$request = $smcFunc['db_query']('', '
@@ -450,3 +380,36 @@ function smf_db_get_version()
 
 	return $ver;
 }
+
+/**
+ * Figures out if we are using MySQL, Percona or MariaDB
+ *
+ * @return string The database engine we are using
+*/
+function smf_db_get_engine()
+{
+	global $smcFunc;
+	static $db_type;
+
+	if (!empty($db_type))
+		return $db_type;
+
+	$request = $smcFunc['db_query']('', 'SELECT @@version_comment');
+	list ($comment) = $smcFunc['db_fetch_row']($request);
+	$smcFunc['db_free_result']($request);
+
+	// Skip these if we don't have a comment.
+	if (!empty($comment))
+	{
+		if (stripos($comment, 'percona') !== false)
+			return 'Percona';
+		if (stripos($comment, 'mariadb') !== false)
+			return 'MariaDB';
+	}
+	else
+		return 'fail';
+
+	return 'MySQL';
+}
+
+?>

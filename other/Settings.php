@@ -2,15 +2,15 @@
 
 /**
  * The settings file contains all of the basic settings that need to be present when a database/cache is not available.
- * 
+ *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 ########## Maintenance ##########
@@ -65,7 +65,7 @@ $cookiename = 'SMFCookie11';
 ########## Database Info ##########
 /**
  * The database type
- * Default options: mysql, sqlite, postgresql
+ * Default options: mysql, postgresql
  * @var string
  */
 $db_type = 'mysql';
@@ -111,15 +111,15 @@ $db_prefix = 'smf_';
  */
 $db_persist = 0;
 /**
- * 
+ *
  * @var int|bool
  */
 $db_error_send = 0;
 
 ########## Cache Info ##########
 /**
- * Select a cache system. You want to leave this up to the cache area of the admin panel for 
- * proper detection of apc, eaccelerator, memcache, mmcache, output_cache, smf, or xcache 
+ * Select a cache system. You want to leave this up to the cache area of the admin panel for
+ * proper detection of apc, memcached, output_cache, smf, or xcache
  * (you can add more with a mod).
  * @var string
  */
@@ -141,6 +141,26 @@ $cache_memcached = '';
  */
 $cachedir = dirname(__FILE__) . '/cache';
 
+########## Image Proxy ##########
+# This is done entirely in Settings.php to avoid loading the DB while serving the images
+/**
+ * Whether the proxy is enabled or not
+ * @var bool
+ */
+$image_proxy_enabled = true;
+
+/**
+ * Secret key to be used by the proxy
+ * @var string
+ */
+$image_proxy_secret = 'smfisawesome';
+
+/**
+ * Maximum file size (in KB) for indiviudal files
+ * @var int
+ */
+$image_proxy_maxsize = 5192;
+
 ########## Directories/Files ##########
 # Note: These directories do not have to be changed unless you move things.
 /**
@@ -153,17 +173,27 @@ $boarddir = dirname(__FILE__);
  * @var string
  */
 $sourcedir = dirname(__FILE__) . '/Sources';
+/**
+ * Path to the Packages directory.
+ * @var string
+ */
+$packagesdir = dirname(__FILE__) . '/Packages';
+/**
+ * Path to the tasks directory.
+ * @var string
+ */
+$tasksdir = $sourcedir . '/tasks';
 
 ########## Error-Catching ##########
 # Note: You shouldn't touch these settings.
 if (file_exists(dirname(__FILE__) . '/db_last_error.php'))
-	include(dirname(__FILE__) . '/db_last_error.php'); 
+	include(dirname(__FILE__) . '/db_last_error.php');
 
 if (!isset($db_last_error))
 {
 	// File does not exist so lets try to create it
-	file_put_contents(dirname(__FILE__) . '/db_last_error.php', '<' . '?' . "php\n" . '$db_last_error = 0;');
-	$db_last_error = 0; 
+	file_put_contents(dirname(__FILE__) . '/db_last_error.php', '<' . '?' . "php\n" . '$db_last_error = 0;' . "\n" . '?' . '>');
+	$db_last_error = 0;
 }
 
 if (file_exists(dirname(__FILE__) . '/install.php'))
@@ -178,3 +208,5 @@ if (!file_exists($sourcedir) && file_exists($boarddir . '/Sources'))
 	$sourcedir = $boarddir . '/Sources';
 if (!file_exists($cachedir) && file_exists($boarddir . '/cache'))
 	$cachedir = $boarddir . '/cache';
+
+?>

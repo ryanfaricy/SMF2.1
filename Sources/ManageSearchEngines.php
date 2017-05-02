@@ -7,39 +7,48 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Entry point for this section.
  */
 function SearchEngines()
 {
-	global $context, $txt, $scripturl;
+	global $context, $txt, $modSettings;
 
 	isAllowedTo('admin_forum');
 
 	loadLanguage('Search');
 	loadTemplate('ManageSearch');
 
-	$subActions = array(
-		'editspiders' => 'EditSpider',
-		'logs' => 'SpiderLogs',
-		'settings' => 'ManageSearchEngineSettings',
-		'spiders' => 'ViewSpiders',
-		'stats' => 'SpiderStats',
-	);
-
-	call_integration_hook('integrate_manage_search_engines', array(&$subActions));
+	if (!empty($modSettings['spider_mode']))
+	{
+		$subActions = array(
+			'editspiders' => 'EditSpider',
+			'logs' => 'SpiderLogs',
+			'settings' => 'ManageSearchEngineSettings',
+			'spiders' => 'ViewSpiders',
+			'stats' => 'SpiderStats',
+		);
+		$default = 'stats';
+	}
+	else
+	{
+		$subActions = array(
+			'settings' => 'ManageSearchEngineSettings',
+		);
+		$default = 'settings';
+	}
 
 	// Ensure we have a valid subaction.
-	$context['sub_action'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : 'stats';
+	$context['sub_action'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : $default;
 
 	$context['page_title'] = $txt['search_engines'];
 
@@ -49,18 +58,21 @@ function SearchEngines()
 		'description' => $txt['search_engines_description'],
 	);
 
+	call_integration_hook('integrate_manage_search_engines', array(&$subActions));
+
 	// Call the function!
-	$subActions[$context['sub_action']]();
+	call_helper($subActions[$context['sub_action']]);
 }
 
 /**
  * This is really just the settings page.
  *
- * @param bool $return_config = false
+ * @param bool $return_config Whether to return the config_vars array (used for admin search)
+ * @return void|array Returns nothing or returns the $config_vars array if $return_config is true
  */
 function ManageSearchEngineSettings($return_config = false)
 {
-	global $context, $txt, $modSettings, $scripturl, $sourcedir, $smcFunc;
+	global $context, $txt, $scripturl, $sourcedir, $smcFunc;
 
 	$config_vars = array(
 		// How much detail?
@@ -70,7 +82,7 @@ function ManageSearchEngineSettings($return_config = false)
 	);
 
 	// Set up a message.
-	$context['settings_message'] = '<span class="smalltext">' . sprintf($txt['spider_settings_desc'], $scripturl . '?action=admin;area=logs;sa=pruning;' . $context['session_var'] . '=' . $context['session_id']) . '</span>';
+	$context['settings_message'] = '<span class="smalltext">' . sprintf($txt['spider_settings_desc'], $scripturl . '?action=admin;area=logs;sa=settings;' . $context['session_var'] . '=' . $context['session_id']) . '</span>';
 
 	// Do some javascript.
 	$javascript_function = '
@@ -127,16 +139,14 @@ function ManageSearchEngineSettings($return_config = false)
 		call_integration_hook('integrate_save_search_engine_settings');
 		saveDBSettings($config_vars);
 		recacheSpiderNames();
+		$_SESSION['adm-save'] = true;
 		redirectexit('action=admin;area=sengines;sa=settings');
 	}
 
 	// Final settings...
 	$context['post_url'] = $scripturl . '?action=admin;area=sengines;save;sa=settings';
 	$context['settings_title'] = $txt['settings'];
-	$context['settings_insert_below'] = '
-		<script type="text/javascript"><!-- // --><![CDATA[
-			' . $javascript_function . '
-		// ]]></script>';
+	addInlineJavaScript($javascript_function, true);
 
 	// Prepare the settings...
 	prepareDBSettingContext($config_vars);
@@ -147,7 +157,7 @@ function ManageSearchEngineSettings($return_config = false)
  */
 function ViewSpiders()
 {
-	global $context, $txt, $sourcedir, $scripturl, $smcFunc;
+	global $context, $txt, $sourcedir, $scripturl, $smcFunc, $modSettings;
 
 	if (!isset($_SESSION['spider_stat']) || $_SESSION['spider_stat'] < time() - 60)
 	{
@@ -213,7 +223,7 @@ function ViewSpiders()
 	$listOptions = array(
 		'id' => 'spider_list',
 		'title' => $txt['spiders'],
-		'items_per_page' => 20,
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'base_href' => $scripturl . '?action=admin;area=sengines;sa=spiders',
 		'default_sort_col' => 'name',
 		'get_items' => array(
@@ -229,11 +239,10 @@ function ViewSpiders()
 					'value' => $txt['spider_name'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $scripturl;
-
-						return sprintf(\'<a href="%1$s?action=admin;area=sengines;sa=editspiders;sid=%2$d">%3$s</a>\', $scripturl, $rowData[\'id_spider\'], htmlspecialchars($rowData[\'spider_name\']));
-					'),
+					'function' => function($rowData) use ($smcFunc, $scripturl)
+					{
+						return sprintf('<a href="%1$s?action=admin;area=sengines;sa=editspiders;sid=%2$d">%3$s</a>', $scripturl, $rowData['id_spider'], $smcFunc['htmlspecialchars']($rowData['spider_name']));
+					},
 				),
 				'sort' => array(
 					'default' => 'spider_name',
@@ -245,11 +254,10 @@ function ViewSpiders()
 					'value' => $txt['spider_last_seen'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $context, $txt;
-
-						return isset($context[\'spider_last_seen\'][$rowData[\'id_spider\']]) ? timeformat($context[\'spider_last_seen\'][$rowData[\'id_spider\']]) : $txt[\'spider_last_never\'];
-					'),
+					'function' => function($rowData) use ($context, $txt)
+					{
+						return isset($context['spider_last_seen'][$rowData['id_spider']]) ? timeformat($context['spider_last_seen'][$rowData['id_spider']]) : $txt['spider_last_never'];
+					},
 				),
 			),
 			'user_agent' => array(
@@ -279,16 +287,17 @@ function ViewSpiders()
 			),
 			'check' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check" />',
+					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check">',
+					'class' => 'centercol',
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '<input type="checkbox" name="remove[]" value="%1$d" class="input_check" />',
+						'format' => '<input type="checkbox" name="remove[]" value="%1$d" class="input_check">',
 						'params' => array(
 							'id_spider' => false,
 						),
 					),
-					'style' => 'text-align: center',
+					'class' => 'centercol',
 				),
 			),
 		),
@@ -298,12 +307,11 @@ function ViewSpiders()
 		),
 		'additional_rows' => array(
 			array(
-				'position' => 'below_table_data',
+				'position' => 'bottom_of_list',
 				'value' => '
-					<input type="submit" name="removeSpiders" value="' . $txt['spiders_remove_selected'] . '" onclick="return confirm(\'' . $txt['spider_remove_selected_confirm'] . '\');" class="button_submit" />
-					<input type="submit" name="addSpider" value="' . $txt['spiders_add'] . '" class="button_submit" />
+					<input type="submit" name="removeSpiders" value="' . $txt['spiders_remove_selected'] . '" data-confirm="' . $txt['spider_remove_selected_confirm'] . '" class="button_submit you_sure">
+					<input type="submit" name="addSpider" value="' . $txt['spiders_add'] . '" class="button_submit">
 				',
-				'style' => 'text-align: right;',
 			),
 		),
 	);
@@ -317,9 +325,10 @@ function ViewSpiders()
 
 /**
  * Callback function for createList()
- * @param int $start
- * @param int $items_per_page
- * @param string sort
+ * @param int $start The item to start with (for pagination purposes)
+ * @param int $items_per_page The number of items to show per page
+ * @param string $sort A string indicating how to sort the results
+ * @return array An array of information about known spiders
  */
 function list_getSpiders($start, $items_per_page, $sort)
 {
@@ -328,9 +337,12 @@ function list_getSpiders($start, $items_per_page, $sort)
 	$request = $smcFunc['db_query']('', '
 		SELECT id_spider, spider_name, user_agent, ip_info
 		FROM {db_prefix}spiders
-		ORDER BY ' . $sort . '
-		LIMIT ' . $start . ', ' . $items_per_page,
+		ORDER BY {raw:sort}
+		LIMIT {int:start}, {int:items}',
 		array(
+			'sort' => $sort,
+			'start' => $start,
+			'items' => $items_per_page,
 		)
 	);
 	$spiders = array();
@@ -343,7 +355,7 @@ function list_getSpiders($start, $items_per_page, $sort)
 
 /**
  * Callback function for createList()
- * @return int
+ * @return int The number of known spiders
  */
 function list_getNumSpiders()
 {
@@ -416,10 +428,8 @@ function EditSpider()
 				array('id_spider')
 			);
 
-		// Order by user agent length.
-		sortSpiderTable();
 
-		cache_put_data('spider_search', null, 300);
+		cache_put_data('spider_search', null);
 		recacheSpiderNames();
 
 		redirectexit('action=admin;area=sengines;sa=spiders');
@@ -461,7 +471,7 @@ function EditSpider()
  * Do we think the current user is a spider?
  *
  * @todo Should this not be... you know... in a different file?
- * @return int
+ * @return int The ID of the spider if it's known or 0 if it isn't known/isn't a spider
  */
 function SpiderCheck()
 {
@@ -471,12 +481,13 @@ function SpiderCheck()
 		unset($_SESSION['id_robot']);
 	$_SESSION['robot_check'] = time();
 
-	// We cache the spider data for five minutes if we can.
-	if (($spider_data = cache_get_data('spider_search', 300)) === null)
+	// We cache the spider data for ten minutes if we can.
+	if (($spider_data = cache_get_data('spider_search', 600)) === null)
 	{
-		$request = $smcFunc['db_query']('spider_check', '
+		$request = $smcFunc['db_query']('', '
 			SELECT id_spider, user_agent, ip_info
-			FROM {db_prefix}spiders',
+			FROM {db_prefix}spiders
+			ORDER BY LENGTH(user_agent) DESC',
 			array(
 			)
 		);
@@ -485,7 +496,7 @@ function SpiderCheck()
 			$spider_data[] = $row;
 		$smcFunc['db_free_result']($request);
 
-		cache_put_data('spider_search', $spider_data, 300);
+		cache_put_data('spider_search', $spider_data, 600);
 	}
 
 	if (empty($spider_data))
@@ -494,33 +505,25 @@ function SpiderCheck()
 	// Only do these bits once.
 	$ci_user_agent = strtolower($_SERVER['HTTP_USER_AGENT']);
 
-	// Always attempt IPv6 first.
-	if (strpos($_SERVER['REMOTE_ADDR'], ':') !== false)
-		$ip_parts = convertIPv6toInts($_SERVER['REMOTE_ADDR']);
-	else
-		preg_match('/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/', $_SERVER['REMOTE_ADDR'], $ip_parts);
-
 	foreach ($spider_data as $spider)
 	{
 		// User agent is easy.
 		if (!empty($spider['user_agent']) && strpos($ci_user_agent, strtolower($spider['user_agent'])) !== false)
 			$_SESSION['id_robot'] = $spider['id_spider'];
 		// IP stuff is harder.
-		elseif (!empty($ip_parts))
+		elseif ($_SERVER['REMOTE_ADDR'])
 		{
 			$ips = explode(',', $spider['ip_info']);
 			foreach ($ips as $ip)
 			{
+				if ($ip === '')
+					continue;
+
 				$ip = ip2range($ip);
 				if (!empty($ip))
 				{
-					foreach ($ip as $key => $value)
-					{
-						if ($value['low'] > $ip_parts[$key + 1] || $value['high'] < $ip_parts[$key + 1])
-							break;
-						elseif (($key == 7 && strpos($_SERVER['REMOTE_ADDR'], ':') !== false) || ($key == 3 && strpos($_SERVER['REMOTE_ADDR'], ':') === false))
-							$_SESSION['id_robot'] = $spider['id_spider'];
-					}
+					if (inet_ptod($ip['low']) <= inet_ptod($_SERVER['REMOTE_ADDR']) && inet_ptod($ip['high']) >= inet_ptod($_SERVER['REMOTE_ADDR']))
+						$_SESSION['id_robot'] = $spider['id_spider'];
 				}
 			}
 		}
@@ -529,7 +532,7 @@ function SpiderCheck()
 			break;
 	}
 
-	// If this is low server tracking then log the spider here as oppossed to the main logging function.
+	// If this is low server tracking then log the spider here as opposed to the main logging function.
 	if (!empty($modSettings['spider_mode']) && $modSettings['spider_mode'] == 1 && !empty($_SESSION['id_robot']))
 		logSpider();
 
@@ -586,7 +589,7 @@ function logSpider()
 		{
 			$url = $_GET + array('USER_AGENT' => $_SERVER['HTTP_USER_AGENT']);
 			unset($url['sesc'], $url[$context['session_var']]);
-			$url = serialize($url);
+			$url = json_encode($url);
 		}
 		else
 			$url = '';
@@ -632,7 +635,7 @@ function consolidateSpiderStats()
 		$date = strftime('%Y-%m-%d', $stat['last_seen']);
 		$smcFunc['db_query']('', '
 			UPDATE {db_prefix}log_spider_stats
-			SET page_hits = page_hits + ' . $stat['num_hits'] . ',
+			SET page_hits = page_hits + {int:hits},
 				last_seen = CASE WHEN last_seen > {int:last_seen} THEN last_seen ELSE {int:last_seen} END
 			WHERE id_spider = {int:current_spider}
 				AND stat_date = {date:last_seen_date}',
@@ -640,6 +643,7 @@ function consolidateSpiderStats()
 				'last_seen_date' => $date,
 				'last_seen' => $stat['last_seen'],
 				'current_spider' => $stat['id_spider'],
+				'hits' => $stat['num_hits'],
 			)
 		);
 		if ($smcFunc['db_affected_rows']() == 0)
@@ -679,26 +683,37 @@ function SpiderLogs()
 	loadTemplate('ManageSearch');
 
 	// Did they want to delete some entries?
-	if (!empty($_POST['delete_entries']) && isset($_POST['older']))
+	if ((!empty($_POST['delete_entries']) && isset($_POST['older'])) || !empty($_POST['removeAll']))
 	{
 		checkSession();
 		validateToken('admin-sl');
 
-		$deleteTime = time() - (((int) $_POST['older']) * 24 * 60 * 60);
+		if (!empty($_POST['delete_entries']) && isset($_POST['older']))
+		{
+			$deleteTime = time() - (((int) $_POST['older']) * 24 * 60 * 60);
 
-		// Delete the entires.
-		$smcFunc['db_query']('', '
+			// Delete the entires.
+			$smcFunc['db_query']('', '
 			DELETE FROM {db_prefix}log_spider_hits
 			WHERE log_time < {int:delete_period}',
-			array(
-				'delete_period' => $deleteTime,
-			)
-		);
+				array(
+					'delete_period' => $deleteTime,
+				)
+			);
+		}
+		else
+		{
+			// Deleting all of them
+			$smcFunc['db_query']('', '
+			TRUNCATE TABLE {db_prefix}log_spider_hits',
+				array()
+			);
+		}
 	}
 
 	$listOptions = array(
 		'id' => 'spider_logs',
-		'items_per_page' => 20,
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'title' => $txt['spider_logs'],
 		'no_items_label' => $txt['spider_logs_empty'],
 		'base_href' => $context['admin_area'] == 'sengines' ? $scripturl . '?action=admin;area=sengines;sa=logs' : $scripturl . '?action=admin;area=logs;sa=spiderlog',
@@ -727,9 +742,10 @@ function SpiderLogs()
 					'value' => $txt['spider_time'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						return timeformat($rowData[\'log_time\']);
-					'),
+					'function' => function($rowData)
+					{
+						return timeformat($rowData['log_time']);
+					},
 				),
 				'sort' => array(
 					'default' => 'sl.id_hit DESC',
@@ -753,12 +769,10 @@ function SpiderLogs()
 			array(
 				'position' => 'after_title',
 				'value' => $txt['spider_logs_info'],
-				'class' => 'windowbg2',
 			),
 			array(
 				'position' => 'below_table_data',
-				'value' => '<input type="submit" name="removeAll" value="' . $txt['spider_log_empty_log'] . '" onclick="return confirm(\'' . $txt['spider_log_empty_log_confirm'] . '\');" class="button_submit" />',
-				'style' => 'text-align: right;',
+				'value' => '<input type="submit" name="removeAll" value="' . $txt['spider_log_empty_log'] . '" data-confirm="' . $txt['spider_log_empty_log_confirm'] . '" class="button_submit you_sure">',
 			),
 		),
 	);
@@ -772,14 +786,15 @@ function SpiderLogs()
 	if (!empty($context['spider_logs']['rows']))
 	{
 		$urls = array();
+
 		// Grab the current /url.
 		foreach ($context['spider_logs']['rows'] as $k => $row)
 		{
 			// Feature disabled?
-			if (empty($row['viewing']['value']) && isset($modSettings['spider_mode']) && $modSettings['spider_mode'] < 3)
+			if (empty($row['data']['viewing']['value']) && isset($modSettings['spider_mode']) && $modSettings['spider_mode'] < 3)
 				$context['spider_logs']['rows'][$k]['viewing']['value'] = '<em>' . $txt['spider_disabled'] . '</em>';
 			else
-				$urls[$k] = array($row['viewing']['value'], -1);
+				$urls[$k] = array($row['data']['viewing']['value'], -1);
 		}
 
 		// Now stick in the new URLs.
@@ -787,7 +802,7 @@ function SpiderLogs()
 		$urls = determineActions($urls, 'whospider_');
 		foreach ($urls as $k => $new_url)
 		{
-			$context['spider_logs']['rows'][$k]['viewing']['value'] = $new_url;
+			$context['spider_logs']['rows'][$k]['data']['viewing']['value'] = $new_url;
 		}
 	}
 
@@ -799,10 +814,10 @@ function SpiderLogs()
 /**
  * Callback function for createList()
  *
- * @param int $start
- * @param int $items_per_page
- * @param string $sort
- * @return array
+ * @param int $start The item to start with (for pagination purposes)
+ * @param int $items_per_page How many items to show per page
+ * @param string $sort A string indicating how to sort the results
+ * @return array An array of spider log data
  */
 function list_getSpiderLogs($start, $items_per_page, $sort)
 {
@@ -812,9 +827,12 @@ function list_getSpiderLogs($start, $items_per_page, $sort)
 		SELECT sl.id_spider, sl.url, sl.log_time, s.spider_name
 		FROM {db_prefix}log_spider_hits AS sl
 			INNER JOIN {db_prefix}spiders AS s ON (s.id_spider = sl.id_spider)
-		ORDER BY ' . $sort . '
-		LIMIT ' . $start . ', ' . $items_per_page,
+		ORDER BY {raw:sort}
+		LIMIT {int:start}, {int:items}',
 		array(
+			'sort' => $sort,
+			'start' => $start,
+			'items' => $items_per_page,
 		)
 	);
 	$spider_logs = array();
@@ -827,7 +845,7 @@ function list_getSpiderLogs($start, $items_per_page, $sort)
 
 /**
  * Callback function for createList()
- * @return int
+ * @return int The number of spider log entries
  */
 function list_getNumSpiderLogs()
 {
@@ -850,7 +868,7 @@ function list_getNumSpiderLogs()
  */
 function SpiderStats()
 {
-	global $context, $txt, $sourcedir, $scripturl, $smcFunc;
+	global $context, $txt, $sourcedir, $scripturl, $smcFunc, $modSettings;
 
 	// Force an update of the stats every 60 seconds.
 	if (!isset($_SESSION['spider_stat']) || $_SESSION['spider_stat'] < time() - 60)
@@ -921,12 +939,12 @@ function SpiderStats()
 	else
 		foreach ($date_choices as $id => $text)
 			$date_select .= '
-			<option value="' . $id . '"' . ($current_date == $id ? ' selected="selected"' : '') . '>' . $text . '</option>';
+			<option value="' . $id . '"' . ($current_date == $id ? ' selected' : '') . '>' . $text . '</option>';
 
 	$date_select .= '
 		</select>
 		<noscript>
-			<input type="submit" name="go" value="' . $txt['go'] . '" class="button_submit" />
+			<input type="submit" name="go" value="' . $txt['go'] . '" class="button_submit">
 		</noscript>';
 
 	// If we manually jumped to a date work out the offset.
@@ -949,7 +967,7 @@ function SpiderStats()
 	$listOptions = array(
 		'id' => 'spider_stat_list',
 		'title' => $txt['spider'] . ' ' . $txt['spider_stats'],
-		'items_per_page' => 20,
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'base_href' => $scripturl . '?action=admin;area=sengines;sa=stats',
 		'default_sort_col' => 'stat_date',
 		'get_items' => array(
@@ -1021,7 +1039,12 @@ function SpiderStats()
 
 /**
  * Callback function for createList()
- * @return array
+ * Get a list of spider stats from the log_spider table
+ *
+ * @param int $start The item to start with (for pagination purposes)
+ * @param int $items_per_page The number of items to show per page
+ * @param string $sort A string indicating how to sort the results
+ * @return array An array of spider statistics info
  */
 function list_getSpiderStats($start, $items_per_page, $sort)
 {
@@ -1031,9 +1054,12 @@ function list_getSpiderStats($start, $items_per_page, $sort)
 		SELECT ss.id_spider, ss.stat_date, ss.page_hits, s.spider_name
 		FROM {db_prefix}log_spider_stats AS ss
 			INNER JOIN {db_prefix}spiders AS s ON (s.id_spider = ss.id_spider)
-		ORDER BY ' . $sort . '
-		LIMIT ' . $start . ', ' . $items_per_page,
+		ORDER BY {raw:sort}
+		LIMIT {int:start}, {int:items}',
 		array(
+			'sort' => $sort,
+			'start' => $start,
+			'items' => $items_per_page,
 		)
 	);
 	$spider_stats = array();
@@ -1046,7 +1072,9 @@ function list_getSpiderStats($start, $items_per_page, $sort)
 
 /**
  * Callback function for createList()
- * @return int
+ * Get the number of spider stat rows from the log spider stats table
+ *
+ * @return int The number of rows in the log_spider_stats table
  */
 function list_getNumSpiderStats()
 {
@@ -1074,46 +1102,12 @@ function recacheSpiderNames()
 	$request = $smcFunc['db_query']('', '
 		SELECT id_spider, spider_name
 		FROM {db_prefix}spiders',
-		array(
-		)
+		array()
 	);
 	$spiders = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 		$spiders[$row['id_spider']] = $row['spider_name'];
 	$smcFunc['db_free_result']($request);
 
-	updateSettings(array('spider_name_cache' => serialize($spiders)));
-}
-
-/**
- * Sort the search engine table by user agent name to avoid misidentification of engine.
- */
-function sortSpiderTable()
-{
-	global $smcFunc;
-
-	db_extend('packages');
-
-	// Add a sorting column.
-	$smcFunc['db_add_column']('{db_prefix}spiders', array('name' => 'temp_order', 'size' => 8, 'type' => 'mediumint', 'null' => false));
-
-	// Set the contents of this column.
-	$smcFunc['db_query']('set_spider_order', '
-		UPDATE {db_prefix}spiders
-		SET temp_order = LENGTH(user_agent)',
-		array(
-		)
-	);
-
-	// Order the table by this column.
-	$smcFunc['db_query']('alter_table_spiders', '
-		ALTER TABLE {db_prefix}spiders
-		ORDER BY temp_order DESC',
-		array(
-			'db_error_skip' => true,
-		)
-	);
-
-	// Remove the sorting column.
-	$smcFunc['db_remove_column']('{db_prefix}spiders', 'temp_order');
+	updateSettings(array('spider_name_cache' => json_encode($spiders)));
 }

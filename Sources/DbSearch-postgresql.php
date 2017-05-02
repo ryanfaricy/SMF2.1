@@ -7,14 +7,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  *  Add the file functions to the $smcFunc array.
@@ -30,16 +30,31 @@ function db_search_init()
 			'db_create_word_search' => 'smf_db_create_word_search',
 			'db_support_ignore' => false,
 		);
+
+	db_extend();
+
+	//pg 9.5 got ignore support
+	$version = $smcFunc['db_get_version']();
+	// if we got a Beta Version
+	if (stripos($version, 'beta') !== false)
+		$version = substr($version, 0, stripos($version, 'beta')).'.0';
+	// or RC
+	if (stripos($version, 'rc') !== false)
+		$version = substr($version, 0, stripos($version, 'rc')).'.0';
+
+	if (version_compare($version,'9.5.0','>='))
+		$smcFunc['db_support_ignore'] = true;
 }
 
 /**
  * This function will tell you whether this database type supports this search type.
  *
- * @param string $search_type
+ * @param string $search_type The search type
+ * @return boolean Whether or not the specified search type is supported by this DB system.
  */
 function smf_db_search_support($search_type)
 {
-	$supported_types = array('custom');
+	$supported_types = array('custom','fulltext');
 
 	return in_array($search_type, $supported_types);
 }
@@ -47,10 +62,11 @@ function smf_db_search_support($search_type)
 /**
  * Returns the correct query for this search type.
  *
- * @param string $identifier
- * @param string $db_string
- * @param array $db_values, default array()
- * @param resource $connection
+ * @param string $identifier A query identifier
+ * @param string $db_string The query text
+ * @param array $db_values An array of values to pass to $smcFunc['db_query']
+ * @param resource $connection The current DB connection resource
+ * @return resource The query result resource from $smcFunc['db_query']
  */
 function smf_db_search_query($identifier, $db_string, $db_values = array(), $connection = null)
 {
@@ -60,12 +76,12 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 		'create_tmp_log_search_topics' => array(
 			'~mediumint\(\d\)~i' => 'int',
 			'~unsigned~i' => '',
-			'~TYPE=HEAP~i' => '',
+			'~ENGINE=MEMORY~i' => '',
 		),
 		'create_tmp_log_search_messages' => array(
-			'~mediumint\(\d\)' => 'int',
+			'~mediumint\(\d\)~i' => 'int',
 			'~unsigned~i' => '',
-			'~TYPE=HEAP~i' => '',
+			'~ENGINE=MEMORY~i' => '',
 		),
 		'drop_tmp_log_search_topics' => array(
 			'~IF\sEXISTS~i' => '',
@@ -74,10 +90,14 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 			'~IF\sEXISTS~i' => '',
 		),
 		'insert_into_log_messages_fulltext' => array(
+			'~LIKE~i' => 'iLIKE',
+			'~NOT\sLIKE~i' => '~NOT iLIKE',
 			'~NOT\sRLIKE~i' => '!~*',
 			'~RLIKE~i' => '~*',
 		),
 		'insert_log_search_results_subject' => array(
+			'~LIKE~i' => 'iLIKE',
+			'~NOT\sLIKE~i' => 'NOT iLIKE',
 			'~NOT\sRLIKE~i' => '!~*',
 			'~RLIKE~i' => '~*',
 		),
@@ -85,12 +105,23 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 
 	if (isset($replacements[$identifier]))
 		$db_string = preg_replace(array_keys($replacements[$identifier]), array_values($replacements[$identifier]), $db_string);
-	elseif (preg_match('~^\s*INSERT\sIGNORE~i', $db_string) != 0)
+	if (preg_match('~^\s*INSERT\sIGNORE~i', $db_string) != 0)
 	{
 		$db_string = preg_replace('~^\s*INSERT\sIGNORE~i', 'INSERT', $db_string);
-		// Don't error on multi-insert.
-		$db_values['db_error_skip'] = true;
+		if ($smcFunc['db_support_ignore']){
+			//pg style "INSERT INTO.... ON CONFLICT DO NOTHING"
+			$db_string = $db_string.' ON CONFLICT DO NOTHING';
+		}
+		else
+		{
+			// Don't error on multi-insert.
+			$db_values['db_error_skip'] = true;
+		}
 	}
+	
+	//fix double quotes
+	if ($identifier == 'insert_into_log_messages_fulltext')
+		$db_values = str_replace('"', "'", $db_values);
 
 	$return = $smcFunc['db_query']('', $db_string,
 		$db_values, $connection
@@ -102,7 +133,7 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 /**
  * Highly specific function, to create the custom word index table.
  *
- * @param $size
+ * @param string $size The column size type (int, mediumint (8), etc.). Not used here.
  */
 function smf_db_create_word_search($size)
 {

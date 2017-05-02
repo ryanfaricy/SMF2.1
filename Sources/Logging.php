@@ -7,19 +7,19 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Put this user in the online log.
  *
- * @param bool $force = false
+ * @param bool $force Whether to force logging the data
  */
 function writeLog($force = false)
 {
@@ -59,7 +59,7 @@ function writeLog($force = false)
 			$context['session_var'] = $_SESSION['session_var'];
 
 		unset($serialized['sesc'], $serialized[$context['session_var']]);
-		$serialized = serialize($serialized);
+		$serialized = json_encode($serialized);
 	}
 	else
 		$serialized = '';
@@ -91,7 +91,7 @@ function writeLog($force = false)
 
 		$smcFunc['db_query']('', '
 			UPDATE {db_prefix}log_online
-			SET log_time = {int:log_time}, ip = IFNULL(INET_ATON({string:ip}), 0), url = {string:url}
+			SET log_time = {int:log_time}, ip = {inet:ip}, url = {string:url}
 			WHERE session = {string:session}',
 			array(
 				'log_time' => time(),
@@ -123,8 +123,8 @@ function writeLog($force = false)
 
 		$smcFunc['db_insert']($do_delete ? 'ignore' : 'replace',
 			'{db_prefix}log_online',
-			array('session' => 'string', 'id_member' => 'int', 'id_spider' => 'int', 'log_time' => 'int', 'ip' => 'raw', 'url' => 'string'),
-			array($session_id, $user_info['id'], empty($_SESSION['id_robot']) ? 0 : $_SESSION['id_robot'], time(), 'IFNULL(INET_ATON(\'' . $user_info['ip'] . '\'), 0)', $serialized),
+			array('session' => 'string', 'id_member' => 'int', 'id_spider' => 'int', 'log_time' => 'int', 'ip' => 'inet', 'url' => 'string'),
+			array($session_id, $user_info['id'], empty($_SESSION['id_robot']) ? 0 : $_SESSION['id_robot'], time(), $user_info['ip'], $serialized),
 			array('session')
 		);
 	}
@@ -137,7 +137,7 @@ function writeLog($force = false)
 		$_SESSION['timeOnlineUpdated'] = time();
 
 	// Set their login time, if not already done within the last minute.
-	if (SMF != 'SSI' && !empty($user_info['last_login']) && $user_info['last_login'] < time() - 60)
+	if (SMF != 'SSI' && !empty($user_info['last_login']) && $user_info['last_login'] < time() - 60 && (!isset($_REQUEST['action']) || !in_array($_REQUEST['action'], array('.xml', 'login2', 'logintfa'))))
 	{
 		// Don't count longer than 15 minutes.
 		if (time() - $_SESSION['timeOnlineUpdated'] > 60 * 15)
@@ -201,11 +201,11 @@ function logLastDatabaseError()
  */
 function displayDebug()
 {
-	global $context, $scripturl, $boarddir, $modSettings, $boarddir;
-	global $db_cache, $db_count, $db_show_debug, $cache_count, $cache_hits, $txt;
+	global $context, $scripturl, $boarddir, $sourcedir, $cachedir, $settings, $modSettings;
+	global $db_cache, $db_count, $cache_misses, $cache_count_misses, $db_show_debug, $cache_count, $cache_hits, $smcFunc, $txt;
 
 	// Add to Settings.php if you want to show the debugging information.
-	if (!isset($db_show_debug) || $db_show_debug !== true || (isset($_GET['action']) && $_GET['action'] == 'viewquery') || WIRELESS)
+	if (!isset($db_show_debug) || $db_show_debug !== true || (isset($_GET['action']) && $_GET['action'] == 'viewquery'))
 		return;
 
 	if (empty($_SESSION['view_queries']))
@@ -221,7 +221,7 @@ function displayDebug()
 	{
 		if (file_exists($files[$i]))
 			$total_size += filesize($files[$i]);
-		$files[$i] = strtr($files[$i], array($boarddir => '.'));
+		$files[$i] = strtr($files[$i], array($boarddir => '.', $sourcedir => '(Sources)', $cachedir => '(Cache)', $settings['actual_theme_dir'] => '(Current Theme)'));
 	}
 
 	$warnings = 0;
@@ -242,23 +242,21 @@ function displayDebug()
 
 	echo preg_replace('~</body>\s*</html>~', '', $temp), '
 <div class="smalltext" style="text-align: left; margin: 1ex;">
-	', $txt['debug_browser'], $context['browser_body_id'], ' <em>(', implode('</em>, <em>', array_reverse(array_keys($context['browser'], true))), ')</em><br />
-	', $txt['debug_templates'], count($context['debug']['templates']), ': <em>', implode('</em>, <em>', $context['debug']['templates']), '</em>.<br />
-	', $txt['debug_subtemplates'], count($context['debug']['sub_templates']), ': <em>', implode('</em>, <em>', $context['debug']['sub_templates']), '</em>.<br />
-	', $txt['debug_language_files'], count($context['debug']['language_files']), ': <em>', implode('</em>, <em>', $context['debug']['language_files']), '</em>.<br />
-	', $txt['debug_stylesheets'], count($context['debug']['sheets']), ': <em>', implode('</em>, <em>', $context['debug']['sheets']), '</em>.<br />
-	', $txt['debug_hooks'], empty($context['debug']['hooks']) ? 0 : count($context['debug']['hooks']) . ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_hooks\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_hooks" style="display: none;"><em>' . implode('</em>, <em>', $context['debug']['hooks']), '</em></span>)', '<br />
-	', $txt['debug_files_included'], count($files), ' - ', round($total_size / 1024), $txt['debug_kb'], ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_include_info\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_include_info" style="display: none;"><em>', implode('</em>, <em>', $files), '</em></span>)<br />';
+	', $txt['debug_browser'], $context['browser_body_id'], ' <em>(', implode('</em>, <em>', array_reverse(array_keys($context['browser'], true))), ')</em><br>
+	', $txt['debug_templates'], count($context['debug']['templates']), ': <em>', implode('</em>, <em>', $context['debug']['templates']), '</em>.<br>
+	', $txt['debug_subtemplates'], count($context['debug']['sub_templates']), ': <em>', implode('</em>, <em>', $context['debug']['sub_templates']), '</em>.<br>
+	', $txt['debug_language_files'], count($context['debug']['language_files']), ': <em>', implode('</em>, <em>', $context['debug']['language_files']), '</em>.<br>
+	', $txt['debug_stylesheets'], count($context['debug']['sheets']), ': <em>', implode('</em>, <em>', $context['debug']['sheets']), '</em>.<br>
+	', $txt['debug_hooks'], empty($context['debug']['hooks']) ? 0 : count($context['debug']['hooks']) . ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_hooks\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_hooks" style="display: none;"><em>' . implode('</em>, <em>', $context['debug']['hooks']), '</em></span>)', '<br>
+	',(isset($context['debug']['instances']) ? ($txt['debug_instances'] . (empty($context['debug']['instances']) ? 0 : count($context['debug']['instances'])) . ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_instances\').style.display = \'inline\'; this.style.display = \'none\'; return false;">'. $txt['debug_show'] .'</a><span id="debug_instances" style="display: none;"><em>'. implode('</em>, <em>', array_keys($context['debug']['instances'])) .'</em></span>)'. '<br>') : ''),'
+	', $txt['debug_files_included'], count($files), ' - ', round($total_size / 1024), $txt['debug_kb'], ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_include_info\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_include_info" style="display: none;"><em>', implode('</em>, <em>', $files), '</em></span>)<br>';
+
+	if (function_exists('memory_get_peak_usage'))
+		echo $txt['debug_memory_use'], ceil(memory_get_peak_usage() / 1024), $txt['debug_kb'], '<br>';
 
 	// What tokens are active?
 	if (isset($_SESSION['token']))
-	{
-		$token_list = array();
-		foreach ($_SESSION['token'] as $key => $data)
-			$token_list[] = $key;
-
-		echo $txt['debug_tokens'] . '<em>' . implode(',</em> <em>', $token_list), '</em>.<br />';
-	}
+		echo $txt['debug_tokens'] . '<em>' . implode(',</em> <em>', array_keys($_SESSION['token'])), '</em>.<br>';
 
 	if (!empty($modSettings['cache_enable']) && !empty($cache_hits))
 	{
@@ -271,14 +269,19 @@ function displayDebug()
 			$total_t += $cache_hit['t'];
 			$total_s += $cache_hit['s'];
 		}
+		if (!isset($cache_misses))
+			$cache_misses = array();
+		foreach ($cache_misses as $missed)
+			$missed_entires[] = $missed['d'] . ' ' . $missed['k'];
 
 		echo '
-	', $txt['debug_cache_hits'], $cache_count, ': ', sprintf($txt['debug_cache_seconds_bytes_total'], comma_format($total_t, 5), comma_format($total_s)), ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_cache_info\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_cache_info" style="display: none;"><em>', implode('</em>, <em>', $entries), '</em></span>)<br />';
+	', $txt['debug_cache_hits'], $cache_count, ': ', sprintf($txt['debug_cache_seconds_bytes_total'], comma_format($total_t, 5), comma_format($total_s)), ' (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_cache_info\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_cache_info" style="display: none;"><em>', implode('</em>, <em>', $entries), '</em></span>)<br>
+	', $txt['debug_cache_misses'], $cache_count_misses, ': (<a href="javascript:void(0);" onclick="document.getElementById(\'debug_cache_misses_info\').style.display = \'inline\'; this.style.display = \'none\'; return false;">', $txt['debug_show'], '</a><span id="debug_cache_misses_info" style="display: none;"><em>', implode('</em>, <em>', $missed_entires), '</em></span>)<br>';
 	}
 
 	echo '
-	<a href="', $scripturl, '?action=viewquery" target="_blank" class="new_win">', $warnings == 0 ? sprintf($txt['debug_queries_used'], (int) $db_count) : sprintf($txt['debug_queries_used_and_warnings'], (int) $db_count, $warnings), '</a><br />
-	<br />';
+	<a href="', $scripturl, '?action=viewquery" target="_blank" class="new_win">', $warnings == 0 ? sprintf($txt['debug_queries_used'], (int) $db_count) : sprintf($txt['debug_queries_used_and_warnings'], (int) $db_count, $warnings), '</a><br>
+	<br>';
 
 	if ($_SESSION['view_queries'] == 1 && !empty($db_cache))
 		foreach ($db_cache as $q => $qq)
@@ -303,17 +306,17 @@ function displayDebug()
 				$qq['f'] = preg_replace('~^' . preg_quote($boarddir, '~') . '~', '...', $qq['f']);
 
 			echo '
-	<strong>', $is_select ? '<a href="' . $scripturl . '?action=viewquery;qq=' . ($q + 1) . '#qq' . $q . '" target="_blank" class="new_win" style="text-decoration: none;">' : '', nl2br(str_replace("\t", '&nbsp;&nbsp;&nbsp;', htmlspecialchars(ltrim($qq['q'], "\n\r")))) . ($is_select ? '</a></strong>' : '</strong>') . '<br />
+	<strong>', $is_select ? '<a href="' . $scripturl . '?action=viewquery;qq=' . ($q + 1) . '#qq' . $q . '" target="_blank" class="new_win" style="text-decoration: none;">' : '', nl2br(str_replace("\t", '&nbsp;&nbsp;&nbsp;', $smcFunc['htmlspecialchars'](ltrim($qq['q'], "\n\r")))) . ($is_select ? '</a></strong>' : '</strong>') . '<br>
 	&nbsp;&nbsp;&nbsp;';
 			if (!empty($qq['f']) && !empty($qq['l']))
 				echo sprintf($txt['debug_query_in_line'], $qq['f'], $qq['l']);
 
 			if (isset($qq['s'], $qq['t']) && isset($txt['debug_query_which_took_at']))
-				echo sprintf($txt['debug_query_which_took_at'], round($qq['t'], 8), round($qq['s'], 8)) . '<br />';
+				echo sprintf($txt['debug_query_which_took_at'], round($qq['t'], 8), round($qq['s'], 8)) . '<br>';
 			elseif (isset($qq['t']))
-				echo sprintf($txt['debug_query_which_took'], round($qq['t'], 8)) . '<br />';
+				echo sprintf($txt['debug_query_which_took'], round($qq['t'], 8)) . '<br>';
 			echo '
-	<br />';
+	<br>';
 		}
 
 	echo '
@@ -328,8 +331,8 @@ function displayDebug()
  * It does not actually commit the changes until the end of the page view.
  * It depends on the trackStats setting.
  *
- * @param array $stats = array()
- * @return bool|array
+ * @param array $stats An array of data
+ * @return bool Whether or not the info was updated successfully
  */
 function trackStats($stats = array())
 {
@@ -388,10 +391,10 @@ function trackStats($stats = array())
  * You should use {@link logActions()} instead.
  * @example logAction('remove', array('starter' => $id_member_started));
  *
- * @deprecated deprecated since version 2.1
- * @param string $action
- * @param array $extra = array()
- * @param string $log_type, options 'moderate', 'admin', ...etc.
+ * @param string $action The action to log
+ * @param array $extra = array() An array of additional data
+ * @param string $log_type What type of log ('admin', 'moderate', etc.)
+ * @return int The ID of the row containing the logged data
  */
 function logAction($action, $extra = array(), $log_type = 'moderate')
 {
@@ -406,8 +409,8 @@ function logAction($action, $extra = array(), $log_type = 'moderate')
  * Log changes to the forum, such as moderation events or administrative changes.
  * This behaves just like logAction() in SMF 2.0, except that it is designed to log multiple actions at once.
  *
- * @param array $logs
- * @return the last logged ID
+ * @param array $logs An array of log data
+ * @return int The last logged ID
  */
 function logActions($logs)
 {
@@ -420,11 +423,15 @@ function logActions($logs)
 		'admin' => 3,
 	);
 
-	call_integration_hook('integrate_log_types', array($log_types));
-
-	// No point in doing anything, if the log isn't even enabled.
+	// Make sure this particular log is enabled first...
 	if (empty($modSettings['modlog_enabled']))
-		return false;
+		unset ($log_types['moderate']);
+	if (empty($modSettings['userlog_enabled']))
+		unset ($log_types['user']);
+	if (empty($modSettings['adminlog_enabled']))
+		unset ($log_types['admin']);
+
+	call_integration_hook('integrate_log_types', array(&$log_types));
 
 	foreach ($logs as $log)
 	{
@@ -432,7 +439,7 @@ function logActions($logs)
 			return false;
 
 		if (!is_array($log['extra']))
-			trigger_error('logActions(): data is not an array with action \'' . $action . '\'', E_USER_NOTICE);
+			trigger_error('logActions(): data is not an array with action \'' . $log['action'] . '\'', E_USER_NOTICE);
 
 		// Pull out the parts we want to store separately, but also make sure that the data is proper
 		if (isset($log['extra']['topic']))
@@ -473,8 +480,9 @@ function logActions($logs)
 			if ($smcFunc['db_num_rows']($request) > 0)
 			{
 				require_once($sourcedir . '/ModerationCenter.php');
+				require_once($sourcedir . '/Subs-ReportedContent.php');
 				updateSettings(array('last_mod_report_action' => time()));
-				recountOpenReports();
+				recountOpenReports('posts');
 			}
 			$smcFunc['db_free_result']($request);
 		}
@@ -510,19 +518,20 @@ function logActions($logs)
 
 		$inserts[] = array(
 			time(), $log_types[$log['log_type']], $memID, $user_info['ip'], $log['action'],
-			$board_id, $topic_id, $msg_id, serialize($log['extra']),
+			$board_id, $topic_id, $msg_id, json_encode($log['extra']),
 		);
 	}
 
-	$smcFunc['db_insert']('',
+	$id_action = $smcFunc['db_insert']('',
 		'{db_prefix}log_actions',
 		array(
-			'log_time' => 'int', 'id_log' => 'int', 'id_member' => 'int', 'ip' => 'string-16', 'action' => 'string',
+			'log_time' => 'int', 'id_log' => 'int', 'id_member' => 'int', 'ip' => 'inet', 'action' => 'string',
 			'id_board' => 'int', 'id_topic' => 'int', 'id_msg' => 'int', 'extra' => 'string-65534',
 		),
 		$inserts,
-		array('id_action')
+		array('id_action'),
+		1
 	);
 
-	return $smcFunc['db_insert_id']('{db_prefix}log_actions', 'id_action');
+	return $id_action;
 }

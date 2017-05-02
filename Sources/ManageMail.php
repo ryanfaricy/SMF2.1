@@ -9,21 +9,21 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Main dispatcher. This function checks permissions and passes control through to the relevant section.
  */
 function ManageMail()
 {
-	global $context, $txt, $scripturl, $modSettings, $sourcedir;
+	global $context, $txt, $sourcedir;
 
 	// You need to be an admin to edit settings!
 	isAllowedTo('admin_forum');
@@ -43,8 +43,6 @@ function ManageMail()
 		'settings' => 'ModifyMailSettings',
 	);
 
-	call_integration_hook('integrate_manage_mail', array(&$subActions));
-
 	// By default we want to browse
 	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : 'browse';
 	$context['sub_action'] = $_REQUEST['sa'];
@@ -56,8 +54,10 @@ function ManageMail()
 		'description' => $txt['mailqueue_desc'],
 	);
 
-	// Call the right function for this sub-acton.
-	$subActions[$_REQUEST['sa']]();
+	call_integration_hook('integrate_manage_mail', array(&$subActions));
+
+	// Call the right function for this sub-action.
+	call_helper($subActions[$_REQUEST['sa']]);
 }
 
 /**
@@ -65,13 +65,13 @@ function ManageMail()
  */
 function BrowseMailQueue()
 {
-	global $scripturl, $context, $modSettings, $txt, $smcFunc;
-	global $sourcedir;
+	global $scripturl, $context, $txt, $smcFunc;
+	global $sourcedir, $modSettings;
 
 	// First, are we deleting something from the queue?
 	if (isset($_REQUEST['delete']))
 	{
-		checkSession('post');
+		checkSession();
 
 		$smcFunc['db_query']('', '
 			DELETE FROM {db_prefix}mail_queue
@@ -98,7 +98,7 @@ function BrowseMailQueue()
 	$listOptions = array(
 		'id' => 'mail_queue',
 		'title' => $txt['mailqueue_browse'],
-		'items_per_page' => 20,
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'base_href' => $scripturl . '?action=admin;area=mailqueue',
 		'default_sort_col' => 'age',
 		'no_items_label' => $txt['mailqueue_no_items'],
@@ -114,10 +114,10 @@ function BrowseMailQueue()
 					'value' => $txt['mailqueue_subject'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $smcFunc;
-						return $smcFunc[\'strlen\']($rowData[\'subject\']) > 50 ? sprintf(\'%1$s...\', htmlspecialchars($smcFunc[\'substr\']($rowData[\'subject\'], 0, 47))) : htmlspecialchars($rowData[\'subject\']);
-					'),
+					'function' => function($rowData) use ($smcFunc)
+					{
+						return $smcFunc['strlen']($rowData['subject']) > 50 ? sprintf('%1$s...', $smcFunc['htmlspecialchars']($smcFunc['substr']($rowData['subject'], 0, 47))) : $smcFunc['htmlspecialchars']($rowData['subject']);
+					},
 					'class' => 'smalltext',
 				),
 				'sort' => array(
@@ -148,15 +148,14 @@ function BrowseMailQueue()
 					'value' => $txt['mailqueue_priority'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $txt;
-
+					'function' => function($rowData) use ($txt)
+					{
 						// We probably have a text label with your priority.
-						$txtKey = sprintf(\'mq_mpriority_%1$s\', $rowData[\'priority\']);
+						$txtKey = sprintf('mq_mpriority_%1$s', $rowData['priority']);
 
 						// But if not, revert to priority 0.
-						return isset($txt[$txtKey]) ? $txt[$txtKey] : $txt[\'mq_mpriority_1\'];
-					'),
+						return isset($txt[$txtKey]) ? $txt[$txtKey] : $txt['mq_mpriority_1'];
+					},
 					'class' => 'smalltext',
 				),
 				'sort' => array(
@@ -169,9 +168,10 @@ function BrowseMailQueue()
 					'value' => $txt['mailqueue_age'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						return time_since(time() - $rowData[\'time_sent\']);
-					'),
+					'function' => function($rowData)
+					{
+						return time_since(time() - $rowData['time_sent']);
+					},
 					'class' => 'smalltext',
 				),
 				'sort' => array(
@@ -181,12 +181,13 @@ function BrowseMailQueue()
 			),
 			'check' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check" />',
+					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check">',
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						return \'<input type="checkbox" name="delete[]" value="\' . $rowData[\'id_mail\'] . \'" class="input_check" />\';
-					'),
+					'function' => function($rowData)
+					{
+						return '<input type="checkbox" name="delete[]" value="' . $rowData['id_mail'] . '" class="input_check">';
+					},
 					'class' => 'smalltext',
 				),
 			),
@@ -198,8 +199,12 @@ function BrowseMailQueue()
 		),
 		'additional_rows' => array(
 			array(
-				'position' => 'below_table_data',
-				'value' => '<input type="submit" name="delete_redirects" value="' . $txt['quickmod_delete_selected'] . '" onclick="return confirm(\'' . $txt['quickmod_confirm'] . '\');" class="button_submit" /><a class="button_link" href="' . $scripturl . '?action=admin;area=mailqueue;sa=clear;' . $context['session_var'] . '=' . $context['session_id'] . '" onclick="return confirm(\'' . $txt['mailqueue_clear_list_warning'] . '\');">' . $txt['mailqueue_clear_list'] . '</a> ',
+				'position' => 'top_of_list',
+				'value' => '<input type="submit" name="delete_redirects" value="' . $txt['quickmod_delete_selected'] . '" data-confirm="' . $txt['quickmod_confirm'] . '" class="button_submit you_sure"><a class="button_link you_sure" href="' . $scripturl . '?action=admin;area=mailqueue;sa=clear;' . $context['session_var'] . '=' . $context['session_id'] . '" data-confirm="' . $txt['mailqueue_clear_list_warning'] . '">' . $txt['mailqueue_clear_list'] . '</a> ',
+			),
+			array(
+				'position' => 'bottom_of_list',
+				'value' => '<input type="submit" name="delete_redirects" value="' . $txt['quickmod_delete_selected'] . '" data-confirm="' . $txt['quickmod_confirm'] . '" class="button_submit you_sure"><a class="button_link you_sure" href="' . $scripturl . '?action=admin;area=mailqueue;sa=clear;' . $context['session_var'] . '=' . $context['session_id'] . '" data-confirm="' . $txt['mailqueue_clear_list_warning'] . '">' . $txt['mailqueue_clear_list'] . '</a> ',
 			),
 		),
 	);
@@ -213,11 +218,12 @@ function BrowseMailQueue()
 
 /**
  * This function grabs the mail queue items from the database, according to the params given.
+ * Callback for $listOptions['get_items'] in BrowseMailQueue()
  *
- * @param int $start
- * @param int $items_per_page
- * @param string $sort
- * @return array
+ * @param int $start The item to start with (for pagination purposes)
+ * @param int $items_per_page How many items to show on each page
+ * @param string $sort A string indicating how to sort the results
+ * @return array An array with info about the mail queue items
  */
 function list_getMailQueue($start, $items_per_page, $sort)
 {
@@ -251,7 +257,8 @@ function list_getMailQueue($start, $items_per_page, $sort)
 
 /**
  * Returns the total count of items in the mail queue.
- * @return int
+ * Callback for $listOptions['get_count'] in BrowseMailQueue
+ * @return int The total number of mail queue items
  */
 function list_getMailQueueSize()
 {
@@ -273,12 +280,12 @@ function list_getMailQueueSize()
 /**
  * Allows to view and modify the mail settings.
  *
- * @param bool $return_config = false
- * @return array
+ * @param bool $return_config Whether to return the $config_vars array (used for admin search)
+ * @return void|array Returns nothing or returns the $config_vars array if $return_config is true
  */
 function ModifyMailSettings($return_config = false)
 {
-	global $txt, $scripturl, $context, $settings, $modSettings, $txtBirthdayEmails;
+	global $txt, $scripturl, $context, $modSettings, $txtBirthdayEmails;
 
 	loadLanguage('EmailTemplates');
 
@@ -298,12 +305,11 @@ function ModifyMailSettings($return_config = false)
 
 	$config_vars = array(
 			// Mail queue stuff, this rocks ;)
-			array('check', 'mail_queue'),
-			array('int', 'mail_limit'),
+			array('int', 'mail_limit', 'subtext' => $txt['zero_to_disable']),
 			array('int', 'mail_quantity'),
 		'',
 			// SMTP stuff.
-			array('select', 'mail_type', array($txt['mail_type_default'], 'SMTP')),
+			array('select', 'mail_type', array($txt['mail_type_default'], 'SMTP', 'SMTP - STARTTLS')),
 			array('text', 'smtp_host'),
 			array('text', 'smtp_port'),
 			array('text', 'smtp_username'),
@@ -344,7 +350,7 @@ function ModifyMailSettings($return_config = false)
 	prepareDBSettingContext($config_vars);
 
 	$context['settings_insert_above'] = '
-	<script type="text/javascript"><!-- // --><![CDATA[
+	<script>
 		var bDay = {';
 
 	$i = 0;
@@ -365,7 +371,7 @@ function ModifyMailSettings($return_config = false)
 			document.getElementById(\'birthday_subject\').innerHTML = bDay[index].subject;
 			document.getElementById(\'birthday_body\').innerHTML = bDay[index].body;
 		}
-	// ]]></script>';
+	</script>';
 }
 
 /**
@@ -446,8 +452,8 @@ function pauseMailQueueClear()
 /**
  * Little utility function to calculate how long ago a time was.
  *
- * @param long $time_diff
- * @return string
+ * @param int $time_diff The time difference, in seconds
+ * @return string A string indicating how many days, hours, minutes or seconds (depending on $time_diff)
  */
 function time_since($time_diff)
 {

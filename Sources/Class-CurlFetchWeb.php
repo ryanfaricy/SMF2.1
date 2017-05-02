@@ -1,19 +1,20 @@
 <?php
 /**
  * Simple Machines Forum (SMF)
- * 
+ *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
+ * Class curl_fetch_web_data
  * Simple cURL class to fetch a web page
  * Properly redirects even with safe mode and basedir restrictions
  * Can provide simple post options to a page
@@ -21,7 +22,7 @@ if (!defined('SMF'))
  * Load class
  * Initiate as
  *  - $fetch_data = new cURL_fetch_web_data();
- *	- optionaly pass an array of cURL options and redirect count
+ *	- optionally pass an array of cURL options and redirect count
  *	- cURL_fetch_web_data(cURL options array, Max redirects);
  *  - $fetch_data = new cURL_fetch_web_data(array(CURLOPT_SSL_VERIFYPEER => 1), 5);
  *
@@ -35,20 +36,14 @@ if (!defined('SMF'))
  *  - $fetch_data->result(); // an array of results, body, header, http result codes
  *  - $fetch_data->result_raw(); // show all results of all calls (in the event of a redirect)
  *  - $fetch_data->result_raw(0); // show all results of call x
- *
- * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
- * @license http://www.simplemachines.org/about/smf/license.php BSD
- *
- * @version 2.1 Alpha 1
  */
-
-if (!defined('SMF'))
-	die('Hacking attempt...');
-
 class curl_fetch_web_data
 {
+	/**
+	 * Set the default items for this class
+	 *
+	 * @var array $default_options
+	 */
 	private $default_options = array(
 		CURLOPT_RETURNTRANSFER	=> 1, // Get returned value as a string (don't output it)
 		CURLOPT_HEADER			=> 1, // We need the headers to do our own redirect
@@ -62,13 +57,48 @@ class curl_fetch_web_data
 		CURLOPT_SSL_VERIFYHOST	=> 0, // stop cURL from verifying the peer's host
 		CURLOPT_POST			=> 0, // no post data unless its passed
 	);
+	
+	/**
+	 * @var int Maximum number of redirects
+	 */
+	public $max_redirect;
+	
+	/**
+	 * @var array An array of cURL options
+	 */
+	public $user_options = array();
+	
+	/**
+	 * @var string Any post data as form name => value
+	 */
+	public $post_data;
+	
+	/**
+	 * @var array An array of cURL options
+	 */
+	public $options;
+	
+	/**
+	 * @var int ???
+	 */
+	public $current_redirect;
+	
+	/**
+	 * @var array Stores responses (url, code, error, headers, body) in the response array
+	 */
+	public $response = array();
+	
+	/**
+	 * @var string The header
+	 */
+	public $headers;
 
 	/**
 	* Start the curl object
 	* - allow for user override values
 	*
-	* @param type $options, cURL options as an array
-	* @param type $max_redirect, use to overide the default of 3
+	* @param array $options An array of cURL options
+	* @param int $max_redirect Maximum number of redirects
 	*/
 	public function __construct($options = array(), $max_redirect = 3)
 	{
@@ -84,8 +114,9 @@ class curl_fetch_web_data
 	*  - passed arrays will be converted to a post string joined with &'s
 	*  - calls set_options to set the curl opts array values based on the defaults and user input
 	*
-	* @param type $url, the site we are going to fetch
-	* @param type $post_data, any post data as form name => value
+	* @param string $url the site we are going to fetch
+	* @param array $post_data any post data as form name => value
+	* @return object An instance of the curl_fetch_web_data class
 	*/
 	public function get_url_data($url, $post_data = array())
 	{
@@ -107,9 +138,9 @@ class curl_fetch_web_data
 	*  - stores responses (url, code, error, headers, body) in the response array
 	*  - detects 301, 302, 307 codes and will redirect to the given response header location
 	*
-	* @param type $url, site to fetch
-	* @param type $redirect, flag to indicate if this was a redirect request or not
-	* @return boolean
+	* @param string $url The site to fetch
+	* @param bool $redirect Whether or not this was a redirect request
+	* @return void|bool Sets various properties of the class or returns false if the URL isn't specified
 	*/
 	private function curl_request($url, $redirect = false)
 	{
@@ -149,6 +180,7 @@ class curl_fetch_web_data
 			'error' => $error,
 			'headers' => isset($this->headers) ? $this->headers : false,
 			'body' => $body,
+			'size' => $curl_info['download_content_length'],
 		);
 
 		// If this a redirect with a location header and we have not given up, then do it again
@@ -163,9 +195,9 @@ class curl_fetch_web_data
 	/**
 	* Used if being redirected to ensure we have a fully qualified address
 	*
-	* @param type $last_url, where we went to
-	* @param type $new_url, where we were redirected to
-	* @return new url location
+	* @param string $last_url The URL we went to
+	* @param string $new_url The URL we were redirected to
+	* @return string The new URL that was in the HTTP header
 	*/
 	private function get_redirect_url($last_url = '', $new_url = '')
 	{
@@ -188,8 +220,8 @@ class curl_fetch_web_data
 	*  - called as ->result() will return the full final array
 	*  - called as ->result('body') to just return the page source of the result
 	*
-	* @param type $area, used to return an area such as body, header, error
-	* @return type
+	* @param string $area Used to return an area such as body, header, error
+	* @return string The response
 	*/
 	public function result($area = '')
 	{
@@ -207,8 +239,8 @@ class curl_fetch_web_data
 	*  - Can be called as ->result_raw(x) where x is a specific loop results.
 	*  - Call as ->result_raw() for everything.
 	*
-	* @param type $response_number
-	* @return type
+	* @param string $response_number Which response we want to get
+	* @return array|string The entire response array or just the specified response
 	*/
 	public function result_raw($response_number = '')
 	{
@@ -226,8 +258,8 @@ class curl_fetch_web_data
 	*  - forms the date (for post) in to a string var=xyz&var2=abc&var3=123
 	*  - drops vars with @ since we don't support sending files (uploading)
 	*
-	* @param type $post_data
-	* @return type
+	* @param array|string $post_data The raw POST data
+	* @return string A string of post data
 	*/
 	private function build_post_data($post_data)
 	{
@@ -250,7 +282,7 @@ class curl_fetch_web_data
 	* Sets the final cURL options for the current call
 	*  - overwrites our default values with user supplied ones or appends new user ones to what we have
 	*  - sets the callback function now that $this is existing
-	*
+	* @return void
 	*/
 	private function set_options()
 	{
@@ -279,8 +311,8 @@ class curl_fetch_web_data
 	* Called to initiate a redirect from a 301, 302 or 307 header
 	*  - resets the cURL options for the loop, sets the referrer flag
 	*
-	* @param type $target_url
-	* @param type $referer_url
+	* @param string $target_url The URL we want to redirect to
+	* @param string $referer_url The URL that we're redirecting from
 	*/
 	private function redirect($target_url, $referer_url)
 	{
@@ -294,9 +326,9 @@ class curl_fetch_web_data
 	* Callback function to parse returned headers
 	*  - lowercases everything to make it consistent
 	*
-	* @param type $cr
-	* @param type $header
-	* @return type
+	* @param type $cr Not sure what this is used for?
+	* @param string $header The header
+	* @return int The length of the header
 	*/
 	private function header_callback($cr, $header)
 	{
@@ -312,3 +344,4 @@ class curl_fetch_web_data
 	}
 }
 
+?>

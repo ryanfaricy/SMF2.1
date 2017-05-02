@@ -8,21 +8,21 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Clean the request variables - add html entities to GET and slashes if magic_quotes_gpc is Off.
  *
  * What it does:
  * - cleans the request variables (ENV, GET, POST, COOKIE, SERVER) and
- *	 makes sure the query string was parsed correctly.
+ * - makes sure the query string was parsed correctly.
  * - handles the URLs passed by the queryless URLs option.
  * - makes sure, regardless of php.ini, everything has slashes.
  * - sets up $board, $topic, and $scripturl and $_REQUEST['start'].
@@ -75,7 +75,7 @@ function cleanRequest()
 		$_GET = array();
 
 		// Was this redirected? If so, get the REDIRECT_QUERY_STRING.
-		// Do not urldecode() the querystring, unless you so much wish to break OpenID implementation. :)
+		// Do not urldecode() the querystring.
 		$_SERVER['QUERY_STRING'] = substr($_SERVER['QUERY_STRING'], 0, 5) === 'url=/' ? $_SERVER['REDIRECT_QUERY_STRING'] : $_SERVER['QUERY_STRING'];
 
 		// Replace ';' with '&' and '&something&' with '&something=&'.  (this is done for compatibility...)
@@ -211,6 +211,13 @@ function cleanRequest()
 	if (isset($_GET['action']))
 		$_GET['action'] = (string) $_GET['action'];
 
+	// Some mail providers like to encode semicolons in activation URLs...
+	if (!empty($_REQUEST['action']) && substr($_SERVER['QUERY_STRING'], 0, 18) == 'action=activate%3b')
+	{
+		header('Location: ' . $scripturl . '?' . str_replace('%3b', ';', $_SERVER['QUERY_STRING']));
+		exit;
+	}
+
 	// Make sure we have a valid REMOTE_ADDR.
 	if (!isset($_SERVER['REMOTE_ADDR']))
 	{
@@ -219,50 +226,63 @@ function cleanRequest()
 		$_SERVER['is_cli'] = true;
 	}
 	// Perhaps we have a IPv6 address.
-	elseif (!isValidIPv6($_SERVER['REMOTE_ADDR']) || preg_match('~::ffff:\d+\.\d+\.\d+\.\d+~', $_SERVER['REMOTE_ADDR']) !== 0)
+	elseif (isValidIP($_SERVER['REMOTE_ADDR']))
 	{
 		$_SERVER['REMOTE_ADDR'] = preg_replace('~^::ffff:(\d+\.\d+\.\d+\.\d+)~', '\1', $_SERVER['REMOTE_ADDR']);
-
-		// Just incase we have a legacy IPv4 address.
-		// @ TODO: Convert to IPv6.
-		if (preg_match('~^((([1]?\d)?\d|2[0-4]\d|25[0-5])\.){3}(([1]?\d)?\d|2[0-4]\d|25[0-5])$~', $_SERVER['REMOTE_ADDR']) === 0)
-			$_SERVER['REMOTE_ADDR'] = 'unknown';
 	}
 
 	// Try to calculate their most likely IP for those people behind proxies (And the like).
 	$_SERVER['BAN_CHECK_IP'] = $_SERVER['REMOTE_ADDR'];
 
+	// If we haven't specified how to handle Reverse Proxy IP headers, lets do what we always used to do.
+	if (!isset($modSettings['proxy_ip_header']))
+		$modSettings['proxy_ip_header'] = 'autodetect';
+
+	// Which headers are we going to check for Reverse Proxy IP headers?
+	if ($modSettings['proxy_ip_header'] == 'disabled')
+		$reverseIPheaders = array();
+	elseif ($modSettings['proxy_ip_header'] == 'autodetect')
+		$reverseIPheaders = array('HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP');
+	else
+		$reverseIPheaders = array($modSettings['proxy_ip_header']);
+
 	// Find the user's IP address. (but don't let it give you 'unknown'!)
-	// @ TODO: IPv6 really doesn't need this.
-	if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) && !empty($_SERVER['HTTP_CLIENT_IP']) && (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['HTTP_CLIENT_IP']) == 0 || preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['REMOTE_ADDR']) != 0))
+	foreach ($reverseIPheaders as $proxyIPheader)
 	{
-		// We have both forwarded for AND client IP... check the first forwarded for as the block - only switch if it's better that way.
-		if (strtok($_SERVER['HTTP_X_FORWARDED_FOR'], '.') != strtok($_SERVER['HTTP_CLIENT_IP'], '.') && '.' . strtok($_SERVER['HTTP_X_FORWARDED_FOR'], '.') == strrchr($_SERVER['HTTP_CLIENT_IP'], '.') && (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown)~', $_SERVER['HTTP_X_FORWARDED_FOR']) == 0 || preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown)~', $_SERVER['REMOTE_ADDR']) != 0))
-			$_SERVER['BAN_CHECK_IP'] = implode('.', array_reverse(explode('.', $_SERVER['HTTP_CLIENT_IP'])));
-		else
-			$_SERVER['BAN_CHECK_IP'] = $_SERVER['HTTP_CLIENT_IP'];
-	}
-	if (!empty($_SERVER['HTTP_CLIENT_IP']) && (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['HTTP_CLIENT_IP']) == 0 || preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['REMOTE_ADDR']) != 0))
-	{
-		// Since they are in different blocks, it's probably reversed.
-		if (strtok($_SERVER['REMOTE_ADDR'], '.') != strtok($_SERVER['HTTP_CLIENT_IP'], '.'))
-			$_SERVER['BAN_CHECK_IP'] = implode('.', array_reverse(explode('.', $_SERVER['HTTP_CLIENT_IP'])));
-		else
-			$_SERVER['BAN_CHECK_IP'] = $_SERVER['HTTP_CLIENT_IP'];
-	}
-	elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR']))
-	{
-		// If there are commas, get the last one.. probably.
-		if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',') !== false)
+		// Ignore if this is not set.
+		if (!isset($_SERVER[$proxyIPheader]))
+			continue;
+
+		if (!empty($modSettings['proxy_ip_servers']))
 		{
-			$ips = array_reverse(explode(', ', $_SERVER['HTTP_X_FORWARDED_FOR']));
+			foreach (explode(',', $modSettings['proxy_ip_servers']) as $proxy)
+				if ($proxy == $_SERVER['REMOTE_ADDR'] || matchIPtoCIDR($_SERVER['REMOTE_ADDR'], $proxy))
+					continue;
+		}
+
+		// If there are commas, get the last one.. probably.
+		if (strpos($_SERVER[$proxyIPheader], ',') !== false)
+		{
+			$ips = array_reverse(explode(', ', $_SERVER[$proxyIPheader]));
 
 			// Go through each IP...
 			foreach ($ips as $i => $ip)
 			{
 				// Make sure it's in a valid range...
 				if (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $ip) != 0 && preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['REMOTE_ADDR']) == 0)
+				{
+					if (!isValidIPv6($_SERVER[$proxyIPheader]) || preg_match('~::ffff:\d+\.\d+\.\d+\.\d+~', $_SERVER[$proxyIPheader]) !== 0)
+					{
+						$_SERVER[$proxyIPheader] = preg_replace('~^::ffff:(\d+\.\d+\.\d+\.\d+)~', '\1', $_SERVER[$proxyIPheader]);
+
+						// Just incase we have a legacy IPv4 address.
+						// @ TODO: Convert to IPv6.
+						if (preg_match('~^((([1]?\d)?\d|2[0-4]\d|25[0-5])\.){3}(([1]?\d)?\d|2[0-4]\d|25[0-5])$~', $_SERVER[$proxyIPheader]) === 0)
+							continue;
+					}
+
 					continue;
+				}
 
 				// Otherwise, we've got an IP!
 				$_SERVER['BAN_CHECK_IP'] = trim($ip);
@@ -270,8 +290,17 @@ function cleanRequest()
 			}
 		}
 		// Otherwise just use the only one.
-		elseif (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['HTTP_X_FORWARDED_FOR']) == 0 || preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['REMOTE_ADDR']) != 0)
-			$_SERVER['BAN_CHECK_IP'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
+		elseif (preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER[$proxyIPheader]) == 0 || preg_match('~^((0|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168|255|127)\.|unknown|::1|fe80::|fc00::)~', $_SERVER['REMOTE_ADDR']) != 0)
+			$_SERVER['BAN_CHECK_IP'] = $_SERVER[$proxyIPheader];
+		elseif (!isValidIPv6($_SERVER[$proxyIPheader]) || preg_match('~::ffff:\d+\.\d+\.\d+\.\d+~', $_SERVER[$proxyIPheader]) !== 0)
+		{
+			$_SERVER[$proxyIPheader] = preg_replace('~^::ffff:(\d+\.\d+\.\d+\.\d+)~', '\1', $_SERVER[$proxyIPheader]);
+
+			// Just incase we have a legacy IPv4 address.
+			// @ TODO: Convert to IPv6.
+			if (preg_match('~^((([1]?\d)?\d|2[0-4]\d|25[0-5])\.){3}(([1]?\d)?\d|2[0-4]\d|25[0-5])$~', $_SERVER[$proxyIPheader]) === 0)
+				continue;
+		}
 	}
 
 	// Make sure we know the URL of the current request.
@@ -283,10 +312,10 @@ function cleanRequest()
 		$_SERVER['REQUEST_URL'] = $_SERVER['REQUEST_URI'];
 
 	// And make sure HTTP_USER_AGENT is set.
-	$_SERVER['HTTP_USER_AGENT'] = isset($_SERVER['HTTP_USER_AGENT']) ? htmlspecialchars($smcFunc['db_unescape_string']($_SERVER['HTTP_USER_AGENT']), ENT_QUOTES) : '';
+	$_SERVER['HTTP_USER_AGENT'] = isset($_SERVER['HTTP_USER_AGENT']) ? (isset($smcFunc['htmlspecialchars']) ? $smcFunc['htmlspecialchars']($smcFunc['db_unescape_string']($_SERVER['HTTP_USER_AGENT']), ENT_QUOTES) : htmlspecialchars($smcFunc['db_unescape_string']($_SERVER['HTTP_USER_AGENT']), ENT_QUOTES)) : '';
 
 	// Some final checking.
-	if (preg_match('~^((([1]?\d)?\d|2[0-4]\d|25[0-5])\.){3}(([1]?\d)?\d|2[0-4]\d|25[0-5])$~', $_SERVER['BAN_CHECK_IP']) === 0 || !isValidIPv6($_SERVER['BAN_CHECK_IP']))
+	if (!isValidIP($_SERVER['BAN_CHECK_IP']))
 		$_SERVER['BAN_CHECK_IP'] = '';
 	if ($_SERVER['REMOTE_ADDR'] == 'unknown')
 		$_SERVER['REMOTE_ADDR'] = '';
@@ -294,21 +323,25 @@ function cleanRequest()
 
 /**
  * Validates a IPv6 address. returns true if it is ipv6.
- * @param string $ip ip address to be validated
- * @return bool true|false
+ *
+ * @param string $ip The ip address to be validated
+ * @return boolean Whether the specified IP is a valid IPv6 address
  */
 function isValidIPv6($ip)
 {
-	if (preg_match('~^((([0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){6}:[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){5}:([0-9A-Fa-f]{1,4}:)?[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){4}:([0-9A-Fa-f]{1,4}:){0,2}[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){3}:([0-9A-Fa-f]{1,4}:){0,3}[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){2}:([0-9A-Fa-f]{1,4}:){0,4}[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){6}((\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b)\.){3}(\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b))|(([0-9A-Fa-f]{1,4}:){0,5}:((\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b)\.){3}(\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b))|(::([0-9A-Fa-f]{1,4}:){0,5}((\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b)\.){3}(\b((25[0-5])|(1\d{2})|(2[0-4]\d)|(\d{1,2}))\b))|([0-9A-Fa-f]{1,4}::([0-9A-Fa-f]{1,4}:){0,5}[0-9A-Fa-f]{1,4})|(::([0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})|(([0-9A-Fa-f]{1,4}:){1,7}:))$~', $ip) === 0)
+	//looking for :
+	if (strpos($ip, ':') === false)
 		return false;
 
-	return true;
+	//check valid address
+	return inet_pton($ip);
 }
 
 /**
  * Converts IPv6s to numbers.  This makes ban checks much easier.
- * @param string $ip ip address to be converted
- * @return array
+ *
+ * @param string $ip The IP address to be converted
+ * @return array An array containing the expanded IP parts
  */
 function convertIPv6toInts($ip)
 {
@@ -333,8 +366,10 @@ function convertIPv6toInts($ip)
 
 /**
  * Expands a IPv6 address to its full form.
- * @param string $ip ip address to be converted
- * @return bool/string expanded ipv6 address.
+ *
+ * @param string $addr The IPv6 address
+ * @param bool $strict_check Whether to check the length of the expanded address for compliance
+ * @return string|bool The expanded IPv6 address or false if $strict_check is true and the result isn't valid
  */
 function expandIPv6($addr, $strict_check = true)
 {
@@ -367,7 +402,7 @@ function expandIPv6($addr, $strict_check = true)
 
 	unset($p);
 
-    // Join segments.
+	// Join segments.
 	$result = implode(':', $part);
 
 	// Save this incase of repeated use.
@@ -382,14 +417,28 @@ function expandIPv6($addr, $strict_check = true)
 
 
 /**
+ * Detect if a IP is in a CIDR address
+ * - returns true or false
+ *
+ * @param string $ip_address IP address to check
+ * @param string $cidr_address CIDR address to verify
+ * @return bool Whether the IP matches the CIDR
+*/
+function matchIPtoCIDR($ip_address, $cidr_address)
+{
+    list ($cidr_network, $cidr_subnetmask) = preg_split('/', $cidr_address);
+    return (ip2long($ip_address) & (~((1 << (32 - $cidr_subnetmask)) - 1))) == ip2long($cidr_network);
+}
+
+/**
  * Adds slashes to the array/variable.
  * What it does:
  * - returns the var, as an array or string, with escapes as required.
  * - importantly escapes all keys and values!
  * - calls itself recursively if necessary.
  *
- * @param array|string $var
- * @return array|string
+ * @param array|string $var A string or array of strings to escape
+ * @return array|string The escaped string or array of escaped strings
  */
 function escapestring__recursive($var)
 {
@@ -415,9 +464,9 @@ function escapestring__recursive($var)
  * - importantly, does not effect keys, only values.
  * - calls itself recursively if necessary.
  *
- * @param array|string $var
- * @param int $level = 0
- * @return array|string
+ * @param array|string $var The string or array of strings to add entites to
+ * @param int $level Which level we're at within the array (if called recursively)
+ * @return array|string The string or array of strings with entities added
  */
 function htmlspecialchars__recursive($var, $level = 0)
 {
@@ -440,9 +489,9 @@ function htmlspecialchars__recursive($var, $level = 0)
  * - importantly, does it to keys too!
  * - calls itself recursively if there are any sub arrays.
  *
- * @param array|string $var
- * @param int $level = 0
- * @return array|string
+ * @param array|string $var The string or array of strings to decode
+ * @param int $level Which level we're at within the array (if called recursively)
+ * @return array|string The decoded string or array of decoded strings
  */
 function urldecode__recursive($var, $level = 0)
 {
@@ -465,8 +514,8 @@ function urldecode__recursive($var, $level = 0)
  * - effects both keys and values of arrays.
  * - calls itself recursively to handle arrays of arrays.
  *
- * @param array|string $var
- * @return array|string
+ * @param array|string $var The string or array of strings to unescape
+ * @return array|string The unescaped string or array of unescaped strings
  */
 function unescapestring__recursive($var)
 {
@@ -492,9 +541,9 @@ function unescapestring__recursive($var)
  * - effects both keys and values of arrays.
  * - calls itself recursively to handle arrays of arrays.
  *
- * @param array|string $var
- * @param int $level = 0
- * @return array|string
+ * @param array|string $var The string or array of strings to strip slashes from
+ * @param int $level = 0 What level we're at within the array (if called recursively)
+ * @return array|string The string or array of strings with slashes stripped
  */
 function stripslashes__recursive($var, $level = 0)
 {
@@ -518,9 +567,9 @@ function stripslashes__recursive($var, $level = 0)
  * - does not effect keys, only values.
  * - may call itself recursively if needed.
  *
- * @param array|string $var
- * @param int $level = 0
- * @return array|string
+ * @param array|string $var The string or array of strings to trim
+ * @param int $level = 0 How deep we're at within the array (if called recursively)
+ * @return array|string The trimmed string or array of trimmed strings
  */
 function htmltrim__recursive($var, $level = 0)
 {
@@ -543,8 +592,8 @@ function htmltrim__recursive($var, $level = 0)
  * - removes invalid XML characters to assure the input string being
  * - parsed properly.
  *
- * @param string $string
- * @return string
+ * @param string $string The string to clean
+ * @return string The cleaned string
  */
 function cleanXml($string)
 {
@@ -555,10 +604,10 @@ function cleanXml($string)
 }
 
 /**
- * @todo needs a description
+ * Escapes (replaces) characters in strings to make them safe for use in javascript
  *
- * @param string $string
- * @return string
+ * @param string $string The string to escape
+ * @return string The escaped string
  */
 function JavaScriptEscape($string)
 {
@@ -589,12 +638,12 @@ function JavaScriptEscape($string)
  * - because of bugs in certain builds of PHP, does not function in
  *   versions lower than 4.3.0 - please upgrade if this hurts you.
  *
- * @param string $buffer
- * @return string
+ * @param string $buffer The unmodified output buffer
+ * @return string The modified buffer
  */
 function ob_sessrewrite($buffer)
 {
-	global $scripturl, $modSettings, $user_info, $context;
+	global $scripturl, $modSettings, $context;
 
 	// If $scripturl is set to nothing, or the SID is not defined (SSI?) just quit.
 	if ($scripturl == '' || !defined('SID'))
@@ -603,7 +652,7 @@ function ob_sessrewrite($buffer)
 	// Do nothing if the session is cookied, or they are a crawler - guests are caught by redirectexit().  This doesn't work below PHP 4.3.0, because it makes the output buffer bigger.
 	// @todo smflib
 	if (empty($_COOKIE) && SID != '' && !isBrowser('possibly_robot'))
-		$buffer = preg_replace('/"' . preg_quote($scripturl, '/') . '(?!\?' . preg_quote(SID, '/') . ')\\??/', '"' . $scripturl . '?' . SID . '&amp;', $buffer);
+		$buffer = preg_replace('/(?<!<link rel="canonical" href=)"' . preg_quote($scripturl, '/') . '(?!\?' . preg_quote(SID, '/') . ')\\??/', '"' . $scripturl . '?' . SID . '&amp;', $buffer);
 	// Debugging templates, are we?
 	elseif (isset($_GET['debug']))
 		$buffer = preg_replace('/(?<!<link rel="canonical" href=)"' . preg_quote($scripturl, '/') . '\\??/', '"' . $scripturl . '?debug;', $buffer);
@@ -613,9 +662,15 @@ function ob_sessrewrite($buffer)
 	{
 		// Let's do something special for session ids!
 		if (defined('SID') && SID != '')
-			$buffer = preg_replace('/"' . preg_quote($scripturl, '/') . '\?(?:' . SID . '(?:;|&|&amp;))((?:board|topic)=[^#"]+?)(#[^"]*?)?"/e', "'\"' . \$scripturl . '/' . strtr('\$1', '&;=', '//,') . '.html?' . SID . '\$2\"'", $buffer);
+			$buffer = preg_replace_callback('~"' . preg_quote($scripturl, '/') . '\?(?:' . SID . '(?:;|&|&amp;))((?:board|topic)=[^#"]+?)(#[^"]*?)?"~', function($m)
+			{
+				global $scripturl; return '"' . $scripturl . "/" . strtr("$m[1]", '&;=', '//,') . ".html?" . SID . (isset($m[2]) ? $m[2] : "") . '"';
+			}, $buffer);
 		else
-			$buffer = preg_replace('/"' . preg_quote($scripturl, '/') . '\?((?:board|topic)=[^#"]+?)(#[^"]*?)?"/e', "'\"' . \$scripturl . '/' . strtr('\$1', '&;=', '//,') . '.html\$2\"'", $buffer);
+			$buffer = preg_replace_callback('~"' . preg_quote($scripturl, '/') . '\?((?:board|topic)=[^#"]+?)(#[^"]*?)?"~', function($m)
+			{
+				global $scripturl; return '"' . $scripturl . '/' . strtr("$m[1]", '&;=', '//,') . '.html' . (isset($m[2]) ? $m[2] : "") . '"';
+			}, $buffer);
 	}
 
 	// Return the changed buffer.

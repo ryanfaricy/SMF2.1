@@ -8,14 +8,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Format a topic to be printer friendly.
@@ -29,7 +29,7 @@ if (!defined('SMF'))
 function PrintTopic()
 {
 	global $topic, $txt, $scripturl, $context, $user_info;
-	global $board_info, $smcFunc, $modSettings, $settings;
+	global $board_info, $smcFunc, $modSettings;
 
 	// Redirect to the boardindex if no valid topic id is provided.
 	if (empty($topic))
@@ -47,7 +47,7 @@ function PrintTopic()
 
 	// Get the topic starter information.
 	$request = $smcFunc['db_query']('', '
-		SELECT mem.id_member, m.poster_time, IFNULL(mem.real_name, m.poster_name) AS poster_name, t.id_poll
+		SELECT mem.id_member, m.poster_time, COALESCE(mem.real_name, m.poster_name) AS poster_name, t.id_poll
 		FROM {db_prefix}messages AS m
 			LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = m.id_member)
 			LEFT JOIN {db_prefix}topics as t ON (t.id_first_msg = m.id_msg)
@@ -71,7 +71,7 @@ function PrintTopic()
 		$request = $smcFunc['db_query']('', '
 			SELECT
 				p.question, p.voting_locked, p.hide_results, p.expire_time, p.max_votes, p.change_vote,
-				p.guest_vote, p.id_member, IFNULL(mem.real_name, p.poster_name) AS poster_name, p.num_guest_voters, p.reset_poll
+				p.guest_vote, p.id_member, COALESCE(mem.real_name, p.poster_name) AS poster_name, p.num_guest_voters, p.reset_poll
 			FROM {db_prefix}polls AS p
 				LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = p.id_member)
 			WHERE p.id_poll = {int:id_poll}
@@ -101,7 +101,7 @@ function PrintTopic()
 
 		// Get all the options, and calculate the total votes.
 		$request = $smcFunc['db_query']('', '
-			SELECT pc.id_choice, pc.label, pc.votes, IFNULL(lp.id_choice, -1) AS voted_this
+			SELECT pc.id_choice, pc.label, pc.votes, COALESCE(lp.id_choice, -1) AS voted_this
 			FROM {db_prefix}poll_choices AS pc
 				LEFT JOIN {db_prefix}log_polls AS lp ON (lp.id_choice = pc.id_choice AND lp.id_poll = {int:id_poll} AND lp.id_member = {int:current_member} AND lp.id_member != {int:not_guest})
 			WHERE pc.id_poll = {int:id_poll}',
@@ -216,12 +216,11 @@ function PrintTopic()
 				'percent' => $bar,
 				'votes' => $option['votes'],
 				'voted_this' => $option['voted_this'] != -1,
-				'bar' => '<span style="white-space: nowrap;"><img src="' . $settings['images_url'] . '/poll_' . ($context['right_to_left'] ? 'right' : 'left') . '.png" alt="" /><img src="' . $settings['images_url'] . '/poll_middle.png" width="' . $barWide . '" height="12" alt="-" /><img src="' . $settings['images_url'] . '/poll_' . ($context['right_to_left'] ? 'left' : 'right') . '.png" alt="" /></span>',
 				// Note: IE < 8 requires us to set a width on the container, too.
 				'bar_ndt' => $bar > 0 ? '<div class="bar" style="width: ' . ($bar * 3.5 + 4) . 'px;"><div style="width: ' . $bar * 3.5 . 'px;"></div></div>' : '',
 				'bar_width' => $barWide,
 				'option' => parse_bbc($option['label']),
-				'vote_button' => '<input type="' . ($pollinfo['max_votes'] > 1 ? 'checkbox' : 'radio') . '" name="options[]" id="options-' . $i . '" value="' . $i . '" class="input_' . ($pollinfo['max_votes'] > 1 ? 'check' : 'radio') . '" />'
+				'vote_button' => '<input type="' . ($pollinfo['max_votes'] > 1 ? 'checkbox' : 'radio') . '" name="options[]" id="options-' . $i . '" value="' . $i . '" class="input_' . ($pollinfo['max_votes'] > 1 ? 'check' : 'radio') . '">'
 			);
 		}
 	}
@@ -239,7 +238,7 @@ function PrintTopic()
 
 	// Split the topics up so we can print them.
 	$request = $smcFunc['db_query']('', '
-		SELECT subject, poster_time, body, IFNULL(mem.real_name, poster_name) AS poster_name
+		SELECT subject, poster_time, body, COALESCE(mem.real_name, poster_name) AS poster_name, id_msg
 		FROM {db_prefix}messages AS m
 			LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = m.id_member)
 		WHERE m.id_topic = {int:current_topic}' . ($modSettings['postmod_active'] && !allowedTo('approve_posts') ? '
@@ -264,12 +263,73 @@ function PrintTopic()
 			'time' => timeformat($row['poster_time'], false),
 			'timestamp' => forum_time(true, $row['poster_time']),
 			'body' => parse_bbc($row['body'], 'print'),
+			'id_msg' => $row['id_msg'],
 		);
 
 		if (!isset($context['topic_subject']))
 			$context['topic_subject'] = $row['subject'];
 	}
 	$smcFunc['db_free_result']($request);
+
+	// Fetch attachments so we can print them if asked, enabled and allowed
+	if (isset($_REQUEST['images']) && !empty($modSettings['attachmentEnable']) && allowedTo('view_attachments'))
+	{
+		$messages = array();
+		foreach ($context['posts'] as $temp)
+			$messages[] = $temp['id_msg'];
+
+		// build the request
+		$request = $smcFunc['db_query']('', '
+			SELECT
+				a.id_attach, a.id_msg, a.approved, a.width, a.height, a.file_hash, a.filename, a.id_folder, a.mime_type
+			FROM {db_prefix}attachments AS a
+			WHERE a.id_msg IN ({array_int:message_list})
+				AND a.attachment_type = {int:attachment_type}',
+			array(
+				'message_list' => $messages,
+				'attachment_type' => 0,
+				'is_approved' => 1,
+			)
+		);
+		$temp = array();
+		while ($row = $smcFunc['db_fetch_assoc']($request))
+		{
+			$temp[$row['id_attach']] = $row;
+			if (!isset($context['printattach'][$row['id_msg']]))
+				$context['printattach'][$row['id_msg']] = array();
+		}
+		$smcFunc['db_free_result']($request);
+		ksort($temp);
+
+		// load them into $context so the template can use them
+		foreach ($temp as $row)
+		{
+			if (!empty($row['width']) && !empty($row['height']))
+			{
+				if (!empty($modSettings['max_image_width']) && (empty($modSettings['max_image_height']) || $row['height'] * ($modSettings['max_image_width'] / $row['width']) <= $modSettings['max_image_height']))
+				{
+					if ($row['width'] > $modSettings['max_image_width'])
+					{
+						$row['height'] = floor($row['height'] * ($modSettings['max_image_width'] / $row['width']));
+						$row['width'] = $modSettings['max_image_width'];
+					}
+				}
+				elseif (!empty($modSettings['max_image_width']))
+				{
+					if ($row['height'] > $modSettings['max_image_height'])
+					{
+						$row['width'] = floor($row['width'] * $modSettings['max_image_height'] / $row['height']);
+						$row['height'] = $modSettings['max_image_height'];
+					}
+				}
+
+				$row['filename'] = getAttachmentFilename($row['filename'], $row['id_attach'], $row['id_folder'], false, $row['file_hash']);
+
+				// save for the template
+				$context['printattach'][$row['id_msg']][] = $row;
+			}
+		}
+	}
 
 	// Set a canonical URL for this page.
 	$context['canonical_url'] = $scripturl . '?topic=' . $topic . '.0';

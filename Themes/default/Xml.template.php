@@ -3,16 +3,19 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines
- * @copyright 2012 Simple Machines
+ * @author Simple Machines http://www.simplemachines.org
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
+/**
+ *
+ */
 function template_sendbody()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
@@ -20,9 +23,12 @@ function template_sendbody()
 </smf>';
 }
 
+/**
+ * This defines the XML for the AJAX quote feature
+ */
 function template_quotefast()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
@@ -30,31 +36,44 @@ function template_quotefast()
 </smf>';
 }
 
+/**
+ * This defines the XML for the inline edit feature
+ */
 function template_modifyfast()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
 	<subject><![CDATA[', cleanXml($context['message']['subject']), ']]></subject>
 	<message id="msg_', $context['message']['id'], '"><![CDATA[', cleanXml($context['message']['body']), ']]></message>
+	<reason time="', $context['message']['reason']['time'], '" name="', $context['message']['reason']['name'], '"><![CDATA[', cleanXml($context['message']['reason']['text']), ']]></reason>
 </smf>';
 
 }
 
+/**
+ * The XML for handling things when you're done editing a post inline
+ */
 function template_modifydone()
 {
-	global $context, $settings, $options, $txt;
+	global $context, $txt;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
 	<message id="msg_', $context['message']['id'], '">';
 	if (empty($context['message']['errors']))
 	{
+		// Build our string of info about when and why it was modified
+
+		$modified = empty($context['message']['modified']['time']) ? '' : sprintf($txt['last_edit_by'], $context['message']['modified']['time'], $context['message']['modified']['name']);
+		$modified .= empty($context['message']['modified']['reason']) ? '' : ' ' . sprintf($txt['last_edit_reason'], $context['message']['modified']['reason']);
+
 		echo '
-		<modified><![CDATA[', empty($context['message']['modified']['time']) ? '' : cleanXml('&#171; <em>' . $txt['last_edit'] . ': ' . $context['message']['modified']['time'] . ' ' . $txt['by'] . ' ' . $context['message']['modified']['name'] . '</em> &#187;'), ']]></modified>
+		<modified><![CDATA[', empty($modified) ? '' : cleanXml('&#171; <em>' . $modified . '</em>&#187;'), ']]></modified>
 		<subject is_first="', $context['message']['first_in_topic'] ? '1' : '0', '"><![CDATA[', cleanXml($context['message']['subject']), ']]></subject>
-		<body><![CDATA[', $context['message']['body'], ']]></body>';
+		<body><![CDATA[', $context['message']['body'], ']]></body>
+		<success><![CDATA[', $txt['quick_modify_message'], ']]></success>';
 	}
 	else
 		echo '
@@ -64,17 +83,24 @@ function template_modifydone()
 </smf>';
 }
 
+/**
+ * This handles things when editing a topic's subject from the messageindex.
+ */
 function template_modifytopicdone()
 {
-	global $context, $settings, $options, $txt;
+	global $context, $txt;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
 	<message id="msg_', $context['message']['id'], '">';
 	if (empty($context['message']['errors']))
 	{
+		// Build our string of info about when and why it was modified
+		$modified = empty($context['message']['modified']['time']) ? '' : sprintf($txt['last_edit_by'], $context['message']['modified']['time'], $context['message']['modified']['name']);
+		$modified .= empty($context['message']['modified']['reason']) ? '' : sprintf($txt['last_edit_reason'], $context['message']['modified']['reason']);
+
 		echo '
-		<modified><![CDATA[', empty($context['message']['modified']['time']) ? '' : cleanXml('&#171; <em>' . $txt['last_edit'] . ': ' . $context['message']['modified']['time'] . ' ' . $txt['by'] . ' ' . $context['message']['modified']['name'] . '</em> &#187;'), ']]></modified>';
+		<modified><![CDATA[', empty($modified) ? '' : cleanXml('&#171; <em>' . $modified . '</em>&#187;'), ']]></modified>';
 		if (!empty($context['message']['subject']))
 			echo '
 		<subject><![CDATA[', cleanXml($context['message']['subject']), ']]></subject>';
@@ -87,9 +113,12 @@ function template_modifytopicdone()
 </smf>';
 }
 
+/**
+ * The massive XML for previewing posts.
+ */
 function template_post()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
@@ -132,15 +161,18 @@ function template_post()
 </smf>';
 }
 
+/**
+ * All the XML for previewing a PM
+ */
 function template_pm()
 {
-	global $context, $settings, $options, $txt;
+	global $context, $txt;
 
 	// @todo something could be removed...otherwise it can be merged again with template_post
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
 	<preview>
-		<subject><![CDATA[', $context['preview_subject'], ']]></subject>
+		<subject><![CDATA[', $txt['preview'], ' - ', !empty($context['preview_subject']) ? $context['preview_subject'] : $txt['no_subject'], ']]></subject>
 		<body><![CDATA[', $context['preview_message'], ']]></body>
 	</preview>
 	<errors serious="', empty($context['error_type']) || $context['error_type'] != 'serious' ? '0' : '1', '">';
@@ -161,9 +193,42 @@ function template_pm()
 </smf>';
 }
 
+/**
+ * The XML for previewing a warning
+ */
+function template_warning()
+{
+	global $context;
+
+	// @todo something could be removed...otherwise it can be merged again with template_post
+	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
+<smf>
+	<preview>
+		<subject><![CDATA[', $context['preview_subject'], ']]></subject>
+		<body><![CDATA[', $context['preview_message'], ']]></body>
+	</preview>
+	<errors serious="', empty($context['error_type']) || $context['error_type'] != 'serious' ? '0' : '1', '">';
+	if (!empty($context['post_error']['messages']))
+		foreach ($context['post_error']['messages'] as $message)
+			echo '
+		<error><![CDATA[', cleanXml($message), ']]></error>';
+
+	echo '
+	</errors>';
+
+	echo '
+</smf>';
+}
+
+/**
+ * The XML for hiding/showing stats sections via AJAX
+ */
 function template_stats()
 {
-	global $context, $settings, $options, $txt, $modSettings;
+	global $context, $modSettings;
+
+	if (empty($context['yearly']))
+		return;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>';
@@ -182,9 +247,12 @@ function template_stats()
 </smf>';
 }
 
+/**
+ * The XML for selecting items to split
+ */
 function template_split()
 {
-	global $context, $settings, $options;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
@@ -208,7 +276,9 @@ function template_split()
 </smf>';
 }
 
-// This is just to hold off some errors if people are stupid.
+/**
+ * This is just to hold off some errors if people are stupid.
+ */
 if (!function_exists('template_button_strip'))
 {
 	function template_button_strip($button_strip, $direction = 'top', $strip_options = array())
@@ -222,9 +292,12 @@ if (!function_exists('template_button_strip'))
 	}
 }
 
+/**
+ * XML for search results
+ */
 function template_results()
 {
-	global $context, $settings, $options, $txt;
+	global $context, $txt;
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>';
 
@@ -284,9 +357,12 @@ function template_results()
 </smf>';
 }
 
+/**
+ * The XML for the Jump To box
+ */
 function template_jump_to()
 {
-	global $context, $settings, $options;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>';
@@ -302,9 +378,12 @@ function template_jump_to()
 </smf>';
 }
 
+/**
+ * The XML for displaying a column of message icons and selecting one via AJAX
+ */
 function template_message_icons()
 {
-	global $context, $settings, $options;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>';
@@ -315,9 +394,12 @@ function template_message_icons()
 </smf>';
 }
 
+/**
+ * The XML for instantly showing whether a username is valid on the registration page
+ */
 function template_check_username()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>
 <smf>
@@ -325,10 +407,12 @@ function template_check_username()
 </smf>';
 }
 
-// This prints XML in it's most generic form.
+/**
+ * This prints XML in its most generic form.
+ */
 function template_generic_xml()
 {
-	global $context, $settings, $options, $txt;
+	global $context;
 
 	echo '<', '?xml version="1.0" encoding="', $context['character_set'], '"?', '>';
 
@@ -336,7 +420,14 @@ function template_generic_xml()
 	template_generic_xml_recursive($context['xml_data'], 'smf', '', -1);
 }
 
-// Recursive function for displaying generic XML data.
+/**
+ * Recursive function for displaying generic XML data.
+ *
+ * @param array $xml_data An array of XML data
+ * @param string $parent_ident The parent tag
+ * @param string $child_ident The child tag
+ * @param int $level How many levels to indent the code
+ */
 function template_generic_xml_recursive($xml_data, $parent_ident, $child_ident, $level)
 {
 	// This is simply for neat indentation.
@@ -365,52 +456,4 @@ function template_generic_xml_recursive($xml_data, $parent_ident, $child_ident, 
 	echo "\n", str_repeat("\t", $level), '</', $parent_ident, '>';
 }
 
-function template_webslice_header_above()
-{
-	global $settings;
-
-	echo '
-	<link rel="stylesheet" href="', $settings['default_theme_url'], '/css/wireless.css" type="text/css" />';
-}
-
-function template_webslice_header_below()
-{
-}
-
-// This shows a webslice of the recent posts.
-function template_webslice_recent_posts()
-{
-	global $context, $scripturl, $txt;
-
-	echo '
-	<div style="width: 100%; height: 100%; border: 1px solid black; padding: 0; margin: 0 0 0 0; font: 100.01%/100% Verdana, Helvetica, sans-serif;">
-		<div style="background-color: #080436; color: #ffffff; padding: 4px;">
-			', cleanXml($txt['recent_posts']), '
-		</div>';
-
-	$alternate = 0;
-	foreach ($context['recent_posts_data'] as $item)
-	{
-		echo '
-		<div style="background-color: ', $alternate ? '#ECEDF3' : '#F6F6F6', '; font-size: 90%; padding: 2px;">
-			<strong><a href="', $item['link'], '">', cleanXml($item['subject']), '</a></strong> ', cleanXml($txt['by']), ' ', cleanXml(!empty($item['poster']['link']) ? '<a href="' . $item['poster']['link'] . '">' . $item['poster']['name'] . '</a>' : $item['poster']['name']), '
-		</div>';
-		$alternate = !$alternate;
-	}
-
-	echo '
-	</div>
-	<div style="width: 100%; height: 100%; border: 0; padding: 0; margin: 0 0 0 0; font: 100.01%/100% Verdana, Helvetica, sans-serif;">
-		<div style="font-size: xx-small;" class="righttext">';
-
-	if ($context['user']['is_guest'])
-		echo '
-			<a href="', $scripturl, '?action=login">', $txt['login'], '</a>';
-	else
-		echo '
-			', cleanXml($context['user']['name']), ', ', cleanXml($txt['msg_alert_you_have']), ' <a href="', $scripturl, '?action=pm">', cleanXml($context['user']['messages']), ' ', cleanXml($context['user']['messages'] != 1 ? $txt['msg_alert_messages'] : $txt['message_lowercase']), '</a>', cleanXml($txt['newmessages4'] . ' ' . $context['user']['unread_messages']), ' ', cleanXml($context['user']['unread_messages'] == 1 ? $txt['newmessages0'] : $txt['newmessages1']);
-
-	echo '
-		</div>
-	</div>';
-}
+?>

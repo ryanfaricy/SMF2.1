@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1; Packages
+// Version: 2.1 Beta 3; Packages
 
 $txt['package_proceed'] = 'Proceed';
 $txt['php_script'] = 'Modification file was extracted, but this modification also comes with a PHP script which should be executed before it will work';
@@ -24,18 +24,18 @@ $txt['package_downloaded_successfully'] = 'Package has been downloaded successfu
 $txt['package_manager'] = 'Package Manager';
 $txt['install_mod'] = 'Install Mod';
 $txt['uninstall_mod'] = 'Uninstall Mod';
-$txt['sql_file'] = 'The Modification file has been extracted.  This modification also comes with a database file containing changes the database needs.  You will need to execute this file for the modification to function properly.';
+$txt['sql_file'] = 'The Modification file has been extracted. This modification also comes with a database file containing changes the database needs. You will need to execute this file for the modification to function properly.';
 $txt['sql_queries'] = 'SQL Queries';
 $txt['no_mods_installed'] = 'No mods currently installed';
 $txt['browse_installed'] = 'Browse installed mods';
 $txt['uninstall'] = 'Uninstall';
-$txt['delete_list'] = 'Delete Mod List';
 $txt['package_delete_list_warning'] = 'Are you sure you wish to clear the installed modification list?';
-$txt['php_safe_mode'] = 'Sorry, your server currently has PHP set to run in SAFE MODE.  This feature is not compatible with SAFE MODE.';
+$txt['php_safe_mode'] = 'Sorry, your server currently has PHP set to run in SAFE MODE. This feature is not compatible with SAFE MODE.';
 $txt['lets_try_anyway'] = 'Let me try anyway.';
 
+$txt['could_not_package_backup'] = 'A backup could not be made before making changes. No changes have been made at this time as a result (either change the permissions so Packages/backup can be written to, or turn off backups - not recommended)';
+
 $txt['package_manager_desc'] = 'From this easy to use interface, you can download and install modifications for use on your forum.';
-$txt['installed_packages_desc'] = 'You can use the interface below to view those packages currently installed on the forum, and remove the ones you no longer require.';
 $txt['download_packages_desc'] = 'From this section you can choose to either download new packages from package servers, or upload a package file directly to the forum.';
 
 $txt['create_package'] = 'Create a new Package';
@@ -52,11 +52,12 @@ $txt['remove'] = 'Remove';
 $txt['package_type'] = 'Package Type';
 $txt['archiving'] = 'Archiving';
 $txt['extracting'] = 'Extracting';
-$txt['avatars_extracted'] = 'The avatars have been installed, you should now be able to use them.';
-$txt['language_extracted'] = 'The language pack has been installed, you can now enable its use in the language settings area of your admin control panel.';
+$txt['avatars_extracted'] = 'The avatars have been installed. You should now be able to use them.';
+$txt['language_extracted'] = 'The language pack has been installed. You can now enable its use in the language settings area of your admin control panel.';
 
 $txt['mod_name'] = 'Mod Name';
 $txt['mod_version'] = 'Version';
+$txt['mod_installed_time'] = 'Installed';
 $txt['mod_author'] = 'Author';
 $txt['author_website'] = 'Author\'s Homepage';
 $txt['package_no_description'] = 'No description given';
@@ -64,19 +65,17 @@ $txt['package_description'] = 'Description';
 $txt['file_location'] = 'Location of file';
 
 $txt['package_installed_key'] = 'Installed mods:';
-$txt['package_installed_current'] = 'current version';
-$txt['package_installed_old'] = 'older version';
 $txt['package_installed_warning1'] = 'This package is already installed, and no upgrade was found.';
 $txt['package_installed_warning2'] = 'You should uninstall the old version first to avoid problems, or ask the author to create an upgrade from your old version.';
 $txt['package_installed_warning3'] = 'Please remember to always make regular backups of your sources and database before installing mods, especially beta versions.';
 $txt['package_installed_extract'] = 'Extracting Package';
-$txt['package_installed_done'] = 'The package was installed successfully.  You should now be able to use whatever functionality it adds or changes; or not be able to use functionality it removes.';
+$txt['package_installed_done'] = 'The package was installed successfully. You should now be able to use whatever functionality it adds or changes; or not be able to use functionality it removes.';
 $txt['package_installed_redirecting'] = 'Redirecting...';
 $txt['package_installed_redirect_go_now'] = 'Redirect Now';
 $txt['package_installed_redirect_cancel'] = 'Return to Package Manager';
 
-$txt['packages_latest'] = 'Latest Packages';
-$txt['packages_latest_fetch'] = 'Attempting to fetch the most popular and recent packages from www.simplemachines.org...';
+$txt['packages_adding_title'] = 'Obtaining Packages';
+$txt['packages_adding'] = 'You can always find new packages for your forum from the SMF modifications area - <strong><a href="http://custom.simplemachines.org/mods/" target="_blank">http://custom.simplemachines.org/mods/</a></strong>. You can browse them on the website, read the comments, and download them to your computer and then upload them to your forum from there.<br><br>If you run into any questions with modifications, each modification published on simplemachines.org has a dedicated topic about it where support and comments should be directed to.';
 
 $txt['package_upgrade'] = 'Upgrade';
 $txt['package_uninstall_readme'] = 'Uninstallation Readme';
@@ -96,10 +95,11 @@ $txt['package_file'] = 'File';
 $txt['package_tree'] = 'Tree';
 $txt['execute_modification'] = 'Execute Modification';
 $txt['execute_code'] = 'Execute Code';
-$txt['execute_database_changes'] = 'Adapt Database';
+$txt['execute_database_changes'] = 'Execute file';
 $txt['execute_hook_add'] = 'Add Hook';
 $txt['execute_hook_remove'] = 'Remove Hook';
 $txt['execute_hook_action'] = 'Adapting hook %1$s';
+$txt['execute_hook_action_inverse'] = 'Removing hook %1$s';
 $txt['package_requires'] = 'Requires Modification';
 $txt['package_check_for'] = 'Check for installation:';
 $txt['execute_credits_add'] = 'Add Credits';
@@ -108,7 +108,7 @@ $txt['execute_credits_action'] = 'Credits: %1$s';
 
 $txt['package_install_actions'] = 'Installations actions for';
 $txt['package_will_fail_title'] = 'Error in package %1$s';
-$txt['package_will_fail_warning'] = 'At least one error was encountered during a test %1$s of this package.<br />It is <strong>strongly</strong> recommended that you do not continue with %1$s unless you know what you are doing, and have made a backup very recently.<br /><br />This error may be caused by a conflict between the package you\'re trying to install and another package you have already installed, an error in the package, a package which requires another package that you have not installed yet, or a package designed for another version of SMF.';
+$txt['package_will_fail_warning'] = 'At least one error was encountered during a test %1$s of this package.<br>It is <strong>strongly</strong> recommended that you do not continue with %1$s unless you know what you are doing, and have made a backup very recently.<br><br>This error may be caused by a conflict between the package you\'re trying to install and another package you have already installed, an error in the package, a package which requires another package that you have not installed yet, or a package designed for another version of SMF.';
 $txt['package_will_fail_unknown_action'] = 'The package is trying to perform an unknown action: %1$s';
 // Don't use entities in the below string.
 $txt['package_will_fail_popup'] = 'Are you sure you wish to continue installing this modification, even though it will not install successfully?';
@@ -133,21 +133,21 @@ $txt['package_action_skipping'] = '<strong>Skipping file</strong>';
 
 $txt['package_uninstall_actions'] = 'Uninstall Actions';
 $txt['package_uninstall_done'] = 'The package has been successfully uninstalled.';
-$txt['package_uninstall_cannot'] = 'This package cannot be uninstalled, because there is no uninstaller.<br /><br />Please contact the mod author for more information.';
+$txt['package_uninstall_cannot'] = 'This package cannot be uninstalled, because there is no uninstaller.<br><br>Please contact the mod author for more information.';
 
 $txt['package_install_options'] = 'Installation Options';
-$txt['package_install_options_desc'] = 'Set various options for how the package manager installs modifications, including backups and ftp access';
-$txt['package_install_options_ftp_why'] = 'Using the package manager\'s FTP functionality is the easiest way to avoid having to manually chmod the files writable through FTP yourself for the package manager to work.<br />Here you can set the default values for some fields.';
+$txt['package_install_options_desc'] = 'Set various options for how the package manager installs modifications, including backups and FTP access';
+$txt['package_install_options_ftp_why'] = 'Using the package manager\'s FTP functionality is the easiest way to avoid having to manually chmod the files writable through FTP yourself for the package manager to work.<br>Here you can set the default values for some fields.';
 $txt['package_install_options_ftp_server'] = 'FTP Server';
 $txt['package_install_options_ftp_port'] = 'Port';
 $txt['package_install_options_ftp_user'] = 'Username';
 $txt['package_install_options_make_backups'] = 'Create Backup versions of replaced files with a tilde (~) on the end of their names.';
-$txt['package_install_options_make_full_backups'] = 'Create an entire backup (excluding smileys, avatars and attachments) of the SMF install.';
+$txt['package_install_options_make_full_backups'] = 'Create a backup of key SMF files when a package is installed, uninstalled or upgraded.';
 
 $txt['package_ftp_necessary'] = 'FTP Information Required';
-$txt['package_ftp_why'] = 'Some of the files the package manager needs to modify are not writable.  This needs to be changed by logging into FTP and using it to chmod or create the files and folders.  Your FTP information may be temporarily cached for proper operation of the package manager. Note you can also do this manually using an FTP client - to view a list of the affected files please click <a href="#" onclick="%1$s">here</a>.';
+$txt['package_ftp_why'] = 'Some of the files the package manager needs to modify are not writable. This needs to be changed by logging into FTP and using it to chmod or create the files and directories. Your FTP information may be temporarily cached for proper operation of the package manager. Note you can also do this manually using an FTP client - to view a list of the affected files please click <a href="#" onclick="%1$s">here</a>.';
 $txt['package_ftp_why_file_list'] = 'The following files need to made writable to continue installation:';
-$txt['package_ftp_why_download'] = 'In order to download packages, the Packages directory, and any files in it, must be writable.  Currently the system does not have the needed permissions to write to this directory.  The package manager can use your FTP information to attempt to fix this problem.';
+$txt['package_ftp_why_download'] = 'In order to download packages, the Packages directory, and any files in it, must be writable. Currently the system does not have the needed permissions to write to this directory. The package manager can use your FTP information to attempt to fix this problem.';
 $txt['package_ftp_server'] = 'FTP Server';
 $txt['package_ftp_port'] = 'Port';
 $txt['package_ftp_username'] = 'Username';
@@ -158,21 +158,20 @@ $txt['package_ftp_test_connection'] = 'Test Connection';
 $txt['package_ftp_test_success'] = 'FTP connection established.';
 $txt['package_ftp_test_failed'] = 'Could not contact server.';
 
-// For a break, use \\n instead of <br />... and don't use entities.
-$txt['package_delete_bad'] = 'The package you are about to delete is currently installed!  If you delete it, you may not be able to uninstall it later.\\n\\nAre you sure?';
+// For a break, use -n- instead of <br>... and don't use entities.
+$txt['package_delete_bad'] = 'The package you are about to delete is currently installed!-n-If you delete it, you may not be able to uninstall it later.-n-Are you sure?';
 
 $txt['package_examine_file'] = 'View file in package';
 $txt['package_file_contents'] = 'Contents of file';
 
 $txt['package_upload_title'] = 'Upload a Package';
 $txt['package_upload_select'] = 'Package to Upload';
-$txt['package_upload'] = 'Upload';
 $txt['package_uploaded_success'] = 'Package uploaded successfully';
 $txt['package_uploaded_successfully'] = 'The package has been uploaded successfully';
 
 $txt['package_modification_malformed'] = 'Malformed or invalid modification file.';
 $txt['package_modification_missing'] = 'The file could not be found.';
-$txt['package_no_zlib'] = 'Sorry, your PHP configuration doesn\'t have support for <strong>zlib</strong>.  Without this, the package manager cannot function.  Please contact your host about this for more information.';
+$txt['package_no_zlib'] = 'Sorry, your PHP configuration doesn\'t have support for <strong>zlib</strong>. Without this, the package manager cannot function. Please contact your host about this for more information.';
 
 $txt['package_cleanperms_title'] = 'Cleanup Permissions';
 $txt['package_cleanperms_desc'] = 'This interface allows you to reset the permissions for files throughout your installation, so as to increase security or solve any permission problems you may encounter while installing packages.';
@@ -184,11 +183,11 @@ $txt['package_cleanperms_go'] = 'Change file permissions';
 
 $txt['package_download_by_url'] = 'Download a package by url';
 $txt['package_download_filename'] = 'Name of the file';
-$txt['package_download_filename_info'] = 'Optional value.  Should be used when the url does not end in the filename.  For example: index.php?mod=5';
+$txt['package_download_filename_info'] = 'Optional value. Should be used when the url does not end in the filename. For example: index.php?mod=5';
 
 $txt['package_db_uninstall'] = 'Remove all data associated with this modification.';
 $txt['package_db_uninstall_details'] = 'Details';
-$txt['package_db_uninstall_actions'] = 'Checking this option will result in the following database changes';
+$txt['package_db_uninstall_actions'] = 'Checking this option will result in the following actions';
 $txt['package_db_remove_table'] = 'Drop table &quot;%1$s&quot;';
 $txt['package_db_remove_column'] = 'Remove column &quot;%2$s&quot; from &quot;%1$s&quot;';
 $txt['package_db_remove_index'] = 'Remove index &quot;%1$s&quot; from &quot;%2$s&quot;';
@@ -212,7 +211,7 @@ $txt['operation_ignore'] = 'Ignore Errors';
 $txt['operation_invalid'] = 'The operation that you selected is invalid.';
 
 $txt['package_file_perms_desc'] = 'You can use this section to review the writable status of critical files and folders within your forum directory. Note this only considers key forum folders and files - use an FTP client for additional options.';
-$txt['package_file_perms_name'] = 'File/Folder Name';
+$txt['package_file_perms_name'] = 'File/Directory Name';
 $txt['package_file_perms_status'] = 'Current Status';
 $txt['package_file_perms_new_status'] = 'New Status';
 $txt['package_file_perms_status_read'] = 'Read';
@@ -227,7 +226,7 @@ $txt['package_file_perms_more_files'] = 'More Files';
 
 $txt['package_file_perms_change'] = 'Change File Permissions';
 $txt['package_file_perms_predefined'] = 'Use predefined permission profile';
-$txt['package_file_perms_predefined_note'] = 'Note that this only applies the predefined profile to key SMF folders and files.';
+$txt['package_file_perms_predefined_note'] = 'Note that this only applies the predefined profile to key SMF directories and files.';
 $txt['package_file_perms_apply'] = 'Apply individual file permissions settings selected above.';
 $txt['package_file_perms_custom'] = 'If &quot;Custom&quot; has been selected use chmod value of';
 $txt['package_file_perms_pre_restricted'] = 'Restricted - minimum files writable';
@@ -256,7 +255,7 @@ $txt['package_restore_permissions_result'] = 'Result';
 $txt['package_restore_permissions_pre_change'] = '%1$s (%3$s)';
 $txt['package_restore_permissions_post_change'] = '%2$s (%3$s - was %2$s)';
 $txt['package_restore_permissions_action_skipped'] = '<em>Skipped</em>';
-$txt['package_restore_permissions_action_success'] = '<span style="color: green;">Success</span>';
+$txt['package_restore_permissions_action_success'] = '<span class="success">Success</span>';
 $txt['package_restore_permissions_action_failure'] = '<span class="error">Failed</span>';
 $txt['package_restore_permissions_action_done'] = 'SMF has attempted to restore the selected files back to their original permissions, the results can be seen below. If a change failed, or for a more detailed view of file permissions, please see the <a href="%1$s">File Permissions</a> section.';
 
@@ -268,7 +267,7 @@ $txt['package_file_perms_warning_desc'] = '
 	<li>This functionality is mainly applicable on non-Windows based servers - it will not work as expected on Windows in regards to permission flags.</li>
 	<li>Before proceeding make sure you have an FTP client installed in case you do make an error and need to FTP into the server to remedy it.</li>';
 
-$txt['package_confirm_view_package_content'] = 'Are you sure you want to view the package contents from this location:<br /><br />%1$s';
+$txt['package_confirm_view_package_content'] = 'Are you sure you want to view the package contents from this location:<br><br>%1$s';
 $txt['package_confirm_proceed'] = 'Proceed';
 $txt['package_confirm_go_back'] = 'Go back';
 
@@ -276,3 +275,7 @@ $txt['package_readme_default'] = 'Default';
 $txt['package_available_readme_language'] = 'Available Readme Languages:';
 $txt['package_license_default'] = 'Default';
 $txt['package_available_license_language'] = 'Available License Languages:';
+
+$txt['package_chmod_linux'] = 'If you have a shell account, the convenient below command can automatically correct permissions on these files';
+
+?>

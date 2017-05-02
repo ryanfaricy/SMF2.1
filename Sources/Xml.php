@@ -7,42 +7,35 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
-
+/**
+ * The main handler and designator for AJAX stuff - jumpto, message icons and previews
+ */
 function XMLhttpMain()
 {
 	loadTemplate('Xml');
 
-	$sub_actions = array(
-		'jumpto' => array(
-			'function' => 'GetJumpTo',
-		),
-		'messageicons' => array(
-			'function' => 'ListMessageIcons',
-		),
-		'corefeatures' => array(
-			'function' => 'EnableCoreFeatures',
-		),
-		'previews' => array(
-			'function' => 'RetrievePreview',
-		),
+	$subActions = array(
+		'jumpto' =>  'GetJumpTo',
+		'messageicons' => 'ListMessageIcons',
+		'previews' => 'RetrievePreview',
 	);
 
-	// Easy adding of sub actions
- 	call_integration_hook('integrate_xmlhttp', array(&$sub_actions));
+	// Easy adding of sub actions.
+	call_integration_hook('integrate_XMLhttpMain_subActions', array(&$subActions));
 
-	if (!isset($_REQUEST['sa'], $sub_actions[$_REQUEST['sa']]))
+	if (!isset($_REQUEST['sa'], $subActions[$_REQUEST['sa']]))
 		fatal_lang_error('no_access', false);
 
-	$sub_actions[$_REQUEST['sa']]['function']();
+	call_helper($subActions[$_REQUEST['sa']]);
 }
 
 /**
@@ -50,9 +43,9 @@ function XMLhttpMain()
  */
 function GetJumpTo()
 {
-	global $user_info, $context, $smcFunc, $sourcedir;
+	global $context, $sourcedir;
 
-	// Find the boards/cateogories they can see.
+	// Find the boards/categories they can see.
 	require_once($sourcedir . '/Subs-MessageIndex.php');
 	$boardListOptions = array(
 		'use_permissions' => true,
@@ -71,6 +64,9 @@ function GetJumpTo()
 	$context['sub_template'] = 'jump_to';
 }
 
+/**
+ * Gets a list of available message icons and sends the info to the template for display
+ */
 function ListMessageIcons()
 {
 	global $context, $sourcedir, $board;
@@ -81,106 +77,11 @@ function ListMessageIcons()
 	$context['sub_template'] = 'message_icons';
 }
 
-function EnableCoreFeatures()
-{
-	global $context, $smcFunc, $sourcedir, $modSettings, $txt;
-
-	$context['xml_data'] = array();
-	// Just in case, maybe we don't need it
-	loadLanguage('Errors');
-
-	// We need (at least) this to ensure that mod files are included
-	if (!empty($modSettings['integrate_admin_include']))
-	{
-		$admin_includes = explode(',', $modSettings['integrate_admin_include']);
-		foreach ($admin_includes as $include)
-		{
-			$include = strtr(trim($include), array('$boarddir' => $boarddir, '$sourcedir' => $sourcedir, '$themedir' => $settings['theme_dir']));
-			if (file_exists($include))
-				require_once($include);
-		}
-	}
-
-	$errors = array();
-	$returns = array();
-	$tokens = array();
-	if (allowedTo('admin_forum'))
-	{
-		$validation = validateSession();
-		if (empty($validation))
-		{
-			require_once($sourcedir . '/ManageSettings.php');
-			$result = ModifyCoreFeatures();
-
-			if (empty($result))
-			{
-				$id = isset($_POST['feature_id']) ? $_POST['feature_id'] : '';
-
-				if (!empty($id) && isset($context['features'][$id]))
-				{
-					$feature = $context['features'][$id];
-
-					$returns[] = array(
-						'value' => (!empty($_POST['feature_' . $id]) && $feature['url'] ? '<a href="' . $feature['url'] . '">' . $feature['title'] . '</a>' : $feature['title']),
-					);
-
-					createToken('admin-core', 'post');
-					$tokens = array(
-						array(
-							'value' => $context['admin-core_token'],
-							'attributes' => array('type' => 'token_var'),
-						),
-						array(
-							'value' => $context['admin-core_token_var'],
-							'attributes' => array('type' => 'token'),
-						),
-					);
-				}
-				else
-				{
-					$errors[] = array(
-						'value' => $txt['feature_no_exists'],
-					);
-				}
-			}
-			else
-			{
-				$errors[] = array(
-					'value' => $txt[$result],
-				);
-			}
-		}
-		else
-		{
-			$errors[] = array(
-				'value' => $txt[$validation],
-			);
-		}
-	}
-	else
-	{
-		$errors[] = array(
-			'value' => $txt['cannot_admin_forum']
-		);
-	}
-
-	$context['sub_template'] = 'generic_xml';
-	$context['xml_data'] = array (
-		'corefeatures' => array (
-			'identifier' => 'corefeature',
-			'children' => $returns,
-		),
-		'tokens' => array (
-			'identifier' => 'token',
-			'children' => $tokens,
-		),
-		'errors' => array (
-			'identifier' => 'error',
-			'children' => $errors,
-		),
-	);
-}
-
+/**
+ * Handles retrieving previews of news items, newsletters, signatures and warnings.
+ * Calls the appropriate function based on $_POST['item']
+ * @return void|bool Returns false if $_POST['item'] isn't set or isn't valid
+ */
 function RetrievePreview()
 {
 	global $context;
@@ -200,6 +101,9 @@ function RetrievePreview()
 	$_POST['item']();
 }
 
+/**
+ * Handles previewing news items
+ */
 function newspreview()
 {
 	global $context, $sourcedir, $smcFunc;
@@ -207,7 +111,7 @@ function newspreview()
 	require_once($sourcedir . '/Subs-Post.php');
 
 	$errors = array();
-	$news = !isset($_POST['news'])? '' : $smcFunc['htmlspecialchars']($_POST['news'], ENT_QUOTES);
+	$news = !isset($_POST['news']) ? '' : $smcFunc['htmlspecialchars']($_POST['news'], ENT_QUOTES);
 	if (empty($news))
 		$errors[] = array('value' => 'no_news');
 	else
@@ -228,9 +132,13 @@ function newspreview()
 		),
 	);
 }
+
+/**
+ * Handles previewing newsletters
+ */
 function newsletterpreview()
 {
-	global $context, $sourcedir, $smcFunc, $txt;
+	global $context, $sourcedir, $txt;
 
 	require_once($sourcedir . '/Subs-Post.php');
 	require_once($sourcedir . '/ManageNews.php');
@@ -250,6 +158,9 @@ function newsletterpreview()
 	$context['sub_template'] = 'pm';
 }
 
+/**
+ * Handles previewing signatures
+ */
 function sig_preview()
 {
 	global $context, $sourcedir, $smcFunc, $txt, $user_info;
@@ -280,9 +191,9 @@ function sig_preview()
 		list($current_signature) = $smcFunc['db_fetch_row']($request);
 		$smcFunc['db_free_result']($request);
 		censorText($current_signature);
-		$current_signature = parse_bbc($current_signature, true, 'sig' . $user);
+		$current_signature = !empty($current_signature) ? parse_bbc($current_signature, true, 'sig' . $user) : $txt['no_signature_set'];
 
-		$preview_signature = !empty($_POST['signature']) ? $_POST['signature'] : '';
+		$preview_signature = !empty($_POST['signature']) ? $_POST['signature'] : $txt['no_signature_preview'];
 		$validation = profileValidateSignature($preview_signature);
 
 		if ($validation !== true && $validation !== false)
@@ -330,6 +241,9 @@ function sig_preview()
 		);
 }
 
+/**
+ * Handles previewing user warnings
+ */
 function warning_preview()
 {
 	global $context, $sourcedir, $smcFunc, $txt, $user_info, $scripturl, $mbname;
@@ -337,8 +251,6 @@ function warning_preview()
 	require_once($sourcedir . '/Subs-Post.php');
 	loadLanguage('Errors');
 	loadLanguage('ModerationCenter');
-
-	$user = isset($_POST['user']) ? (int) $_POST['user'] : 0;
 
 	$context['post_error']['messages'] = array();
 	if (allowedTo('issue_warning'))
@@ -390,5 +302,5 @@ function warning_preview()
 	else
 		$context['post_error']['messages'][] = array('value' => $txt['cannot_issue_warning'], 'attributes' => array('type' => 'error'));
 
-	$context['sub_template'] = 'pm';
+	$context['sub_template'] = 'warning';
 }

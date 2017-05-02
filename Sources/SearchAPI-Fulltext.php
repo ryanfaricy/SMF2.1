@@ -5,37 +5,42 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
-class fulltext_search
+/**
+ * Class fulltext_search
+ * Used for fulltext index searching
+ */
+class fulltext_search extends search_api
 {
-	// This is the last version of SMF that this was tested on, to protect against API changes.
-	public $version_compatible = 'SMF 2.1 Alpha 1';
-	// This won't work with versions of SMF less than this.
-	public $min_smf_version = 'SMF 2.1 Alpha 1';
-	// Is it supported?
-	public $is_supported = true;
-	// What words are banned?
+	/**
+	 * @var array Which words are banned
+	 */
 	protected $bannedWords = array();
-	// What is the minimum word length?
+
+	/**
+	 * @var int The minimum word length
+	 */
 	protected $min_word_length = 4;
-	// What databases support the fulltext index?
+
+	/**
+	 * @var array Which databases support this method?
+	 */
 	protected $supported_databases = array('mysql');
 
 	/**
-	 * fulltext_search::__construct()
-	 *
+	 * The constructor function
 	 */
 	public function __construct()
 	{
-		global $smcFunc, $db_connection, $modSettings, $db_type;
+		global $modSettings, $db_type;
 
 		// Is this database supported?
 		if (!in_array($db_type, $this->supported_databases))
@@ -49,13 +54,7 @@ class fulltext_search
 	}
 
 	/**
-	 * fulltext_search::supportsMethod()
-	 *
-	 * Check whether the method can be performed by this API.
-	 *
-	 * @param mixed $methodName
-	 * @param mixed $query_params
-	 * @return
+	 * {@inheritDoc}
 	 */
 	public function supportsMethod($methodName, $query_params = null)
 	{
@@ -79,7 +78,7 @@ class fulltext_search
 	 *
 	 * What is the minimum word length full text supports?
 	 *
-	 * @return
+	 * @return int The minimum word length
 	 */
 	protected function _getMinWordLength()
 	{
@@ -104,37 +103,24 @@ class fulltext_search
 
 		return $min_word_length;
 	}
-	
+
 	/**
-	 * callback function for usort used to sort the fulltext results.
-	 * the order of sorting is: large words, small words, large words that
-	 * are excluded from the search, small words that are excluded.
-	 * @param string $a Word A
-	 * @param string $b Word B
-	 * @return int
+	 * {@inheritDoc}
 	 */
 	public function searchSort($a, $b)
 	{
-		global $modSettings, $excludedWords, $smcFunc;
+		global $excludedWords, $smcFunc;
 
 		$x = $smcFunc['strlen']($a) - (in_array($a, $excludedWords) ? 1000 : 0);
 		$y = $smcFunc['strlen']($b) - (in_array($b, $excludedWords) ? 1000 : 0);
-		
+
 		return $x < $y ? 1 : ($x > $y ? -1 : 0);
 	}
-	
+
 	/**
-	 * fulltext_search::prepareIndexes()
-	 *
-	 * Do we have to do some work with the words we are searching for to prepare them?
-	 *
-	 * @param mixed $word
-	 * @param mixed $wordsSearch
-	 * @param mixed $wordsExclude
-	 * @param mixed $isExcluded
-	 * @return
+	 * {@inheritDoc}
 	 */
-	public function prepareIndexes($word, &$wordsSearch, &$wordsExclude, $isExcluded)
+	public function prepareIndexes($word, array &$wordsSearch, array &$wordsExclude, $isExcluded)
 	{
 		global $modSettings, $smcFunc;
 
@@ -168,15 +154,9 @@ class fulltext_search
 	}
 
 	/**
-	 * fulltext_search::indexedWordQuery()
-	 *
-	 * Search for indexed words.
-	 *
-	 * @param mixed $words
-	 * @param mixed $search_data
-	 * @return
+	 * {@inheritDoc}
 	 */
-	public function indexedWordQuery($words, $search_data)
+	public function indexedWordQuery(array $words, array $search_data)
 	{
 		global $modSettings, $smcFunc;
 
@@ -226,7 +206,26 @@ class fulltext_search
 
 		if (!empty($modSettings['search_simple_fulltext']))
 		{
-			$query_where[] = 'MATCH (body) AGAINST ({string:body_match})';
+			if($smcFunc['db_title'] == "PostgreSQL")
+			{
+				//we use the default language "default_text_search_config", otherwise we had to assgine the language here
+				//to_tsvector(body) -> to_tsvector($language,body) to_tsquery(...) -> to_tsquery($language,...)
+				$language_ftx = 'english';
+				$request = $smcFunc['db_query']('','
+					SHOW default_text_search_config',
+					array()
+				);
+
+				if ($request !== false && $smcFunc['db_num_rows']($request) == 1)
+				{
+					$row = $smcFunc['db_fetch_assoc']($request);
+					$language_ftx = $row['default_text_search_config'];
+				}
+				$query_where[] = 'to_tsvector({string:language_ftx},body) @@ to_tsquery({string:language_ftx},{string:body_match})';
+				$query_params['language_ftx'] = $language_ftx;
+			}
+			else
+				$query_where[] = 'MATCH (body) AGAINST ({string:body_match})';
 			$query_params['body_match'] = implode(' ', array_diff($words['indexed_words'], $query_params['excluded_index_words']));
 		}
 		else
@@ -236,13 +235,44 @@ class fulltext_search
 			// remove any indexed words that are used in the complex body search terms
 			$words['indexed_words'] = array_diff($words['indexed_words'], $words['complex_words']);
 
-			foreach ($words['indexed_words'] as $fulltextWord)
-				$query_params['boolean_match'] .= (in_array($fulltextWord, $query_params['excluded_index_words']) ? '-' : '+') . $fulltextWord . ' ';
+			if($smcFunc['db_title'] == "PostgreSQL"){
+				$row = 0;
+				foreach ($words['indexed_words'] as $fulltextWord) {
+					$query_params['boolean_match'] .= ($row <> 0 ? '&' : '');
+					$query_params['boolean_match'] .= (in_array($fulltextWord, $query_params['excluded_index_words']) ? '!' : '') . $fulltextWord . ' ';
+					$row++;
+				}
+			}
+			else
+				foreach ($words['indexed_words'] as $fulltextWord)
+					$query_params['boolean_match'] .= (in_array($fulltextWord, $query_params['excluded_index_words']) ? '-' : '+') . $fulltextWord . ' ';
+
 			$query_params['boolean_match'] = substr($query_params['boolean_match'], 0, -1);
 
 			// if we have bool terms to search, add them in
-			if ($query_params['boolean_match'])
-				$query_where[] = 'MATCH (body) AGAINST ({string:boolean_match} IN BOOLEAN MODE)';
+			if ($query_params['boolean_match']) {
+				if($smcFunc['db_title'] == "PostgreSQL")
+				{
+					//we use the default language "default_text_search_config", otherwise we had to assgine the language here
+					//to_tsvector(body) -> to_tsvector($language,body) to_tsquery(...) -> to_tsquery($language,...)
+					$language_ftx = 'english';
+					$request = $smcFunc['db_query']('','
+						SHOW default_text_search_config',
+						array()
+					);
+
+					if ($request !== false && $smcFunc['db_num_rows']($request) == 1)
+					{
+						$row = $smcFunc['db_fetch_assoc']($request);
+						$language_ftx = $row['default_text_search_config'];
+					}
+					$query_where[] = 'to_tsvector({string:language_ftx},body) @@ to_tsquery({string:language_ftx},{string:boolean_match})';
+					$query_params['language_ftx'] = $language_ftx;
+				}
+				else
+					$query_where[] = 'MATCH (body) AGAINST ({string:boolean_match} IN BOOLEAN MODE)';
+			}
+
 		}
 
 		$ignoreRequest = $smcFunc['db_search_query']('insert_into_log_messages_fulltext', ($smcFunc['db_support_ignore'] ? ( '

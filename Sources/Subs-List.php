@@ -6,23 +6,22 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Create a new list
- * @param array $listOptions
+ * @param array $listOptions An array of options for the list - 'id', 'columns', 'items_per_page', 'get_count', etc.
  */
-
 function createList($listOptions)
 {
-	global $context, $settings, $options, $txt, $modSettings, $scripturl;
+	global $context, $smcFunc;
 
 	assert(isset($listOptions['id']));
 	assert(isset($listOptions['columns']));
@@ -75,14 +74,17 @@ function createList($listOptions)
 		// First get an impression of how many items to expect.
 		if (isset($listOptions['get_count']['file']))
 			require_once($listOptions['get_count']['file']);
-		$list_context['total_num_items'] = call_user_func_array($listOptions['get_count']['function'], empty($listOptions['get_count']['params']) ? array() : $listOptions['get_count']['params']);
+
+		$call = call_helper($listOptions['get_count']['function'], true);
+		$list_context['total_num_items'] = call_user_func_array($call, empty($listOptions['get_count']['params']) ? array() : $listOptions['get_count']['params']);
 
 		// Default the start to the beginning...sounds logical.
 		$list_context['start'] = isset($_REQUEST[$list_context['start_var_name']]) ? (int) $_REQUEST[$list_context['start_var_name']] : 0;
 		$list_context['items_per_page'] = $listOptions['items_per_page'];
 
 		// Then create a page index.
-		$list_context['page_index'] = constructPageIndex($listOptions['base_href'] . (empty($list_context['sort']) ? '' : ';' . $request_var_sort . '=' . $list_context['sort']['id'] . ($list_context['sort']['desc'] ? ';' . $request_var_desc : '')) . ($list_context['start_var_name'] != 'start' ? ';' . $list_context['start_var_name'] . '=%1$d' : ''), $list_context['start'], $list_context['total_num_items'], $list_context['items_per_page'], $list_context['start_var_name'] != 'start');
+		if ($list_context['total_num_items'] > $list_context['items_per_page'])
+			$list_context['page_index'] = constructPageIndex($listOptions['base_href'] . (empty($list_context['sort']) ? '' : ';' . $request_var_sort . '=' . $list_context['sort']['id'] . ($list_context['sort']['desc'] ? ';' . $request_var_desc : '')) . ($list_context['start_var_name'] != 'start' ? ';' . $list_context['start_var_name'] . '=%1$d' : ''), $list_context['start'], $list_context['total_num_items'], $list_context['items_per_page'], $list_context['start_var_name'] != 'start');
 	}
 
 	// Prepare the headers of the table.
@@ -107,7 +109,9 @@ function createList($listOptions)
 		require_once($listOptions['get_items']['file']);
 
 	// Call the function and include which items we want and in what order.
-	$list_items = call_user_func_array($listOptions['get_items']['function'], array_merge(array($list_context['start'], $list_context['items_per_page'], $sort), empty($listOptions['get_items']['params']) ? array() : $listOptions['get_items']['params']));
+	$call = call_helper($listOptions['get_items']['function'], true);
+	$list_items = call_user_func_array($call, array_merge(array($list_context['start'], $list_context['items_per_page'], $sort), empty($listOptions['get_items']['params']) ? array() : $listOptions['get_items']['params']));
+	$list_items = empty($list_items) ? array() : $list_items;
 
 	// Loop through the list items to be shown and construct the data values.
 	$list_context['rows'] = array();
@@ -124,20 +128,20 @@ function createList($listOptions)
 
 			// Take the value from the database and make it HTML safe.
 			elseif (isset($column['data']['db_htmlsafe']))
-				$cur_data['value'] = htmlspecialchars($list_item[$column['data']['db_htmlsafe']]);
+				$cur_data['value'] = $smcFunc['htmlspecialchars']($list_item[$column['data']['db_htmlsafe']]);
 
 			// Using sprintf is probably the most readable way of injecting data.
 			elseif (isset($column['data']['sprintf']))
 			{
 				$params = array();
 				foreach ($column['data']['sprintf']['params'] as $sprintf_param => $htmlsafe)
-					$params[] = $htmlsafe ? htmlspecialchars($list_item[$sprintf_param]) : $list_item[$sprintf_param];
+					$params[] = $htmlsafe ? $smcFunc['htmlspecialchars']($list_item[$sprintf_param]) : $list_item[$sprintf_param];
 				$cur_data['value'] = vsprintf($column['data']['sprintf']['format'], $params);
 			}
 
 			// The most flexible way probably is applying a custom function.
 			elseif (isset($column['data']['function']))
-				$cur_data['value'] = $column['data']['function']($list_item);
+				$cur_data['value'] = call_user_func_array($column['data']['function'], array($list_item));
 
 			// A modified value (inject the database values).
 			elseif (isset($column['data']['eval']))
@@ -169,15 +173,13 @@ function createList($listOptions)
 			$cur_row[$column_id] = $cur_data;
 		}
 
-		$list_context['rows'][$item_id]['class'] = '';
-		$list_context['rows'][$item_id]['style'] = '';
 		// Maybe we wat set a custom class for the row based on the data in the row itself
 		if (isset($listOptions['data_check']))
 		{
 			if (isset($listOptions['data_check']['class']))
-				$list_context['rows'][$item_id]['class'] = ' ' . $listOptions['data_check']['class']($list_item);
+				$list_context['rows'][$item_id]['class'] = $listOptions['data_check']['class']($list_item);
 			if (isset($listOptions['data_check']['style']))
-				$list_context['rows'][$item_id]['style'] = ' style="' . $listOptions['data_check']['style']($list_item) . '"';
+				$list_context['rows'][$item_id]['style'] = $listOptions['data_check']['style']($list_item);
 		}
 
 		// Insert the row into the list.

@@ -7,14 +7,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Add the functions implemented in this file to the $smcFunc array.
@@ -27,17 +27,17 @@ function db_extra_init()
 		$smcFunc += array(
 			'db_backup_table' => 'smf_db_backup_table',
 			'db_optimize_table' => 'smf_db_optimize_table',
-			'db_insert_sql' => 'smf_db_insert_sql',
 			'db_table_sql' => 'smf_db_table_sql',
 			'db_list_tables' => 'smf_db_list_tables',
 			'db_get_version' => 'smf_db_get_version',
+			'db_get_engine' => 'smf_db_get_engine',
 		);
 }
 
 /**
  * Backup $table to $backup_table.
- * @param string $table
- * @param string $backup_table
+ * @param string $table The name of the table to backup
+ * @param string $backup_table The name of the backup table for this table
  * @return resource -the request handle to the table creation query
  */
 function smf_db_backup_table($table, $backup_table)
@@ -82,8 +82,8 @@ function smf_db_backup_table($table, $backup_table)
 
 /**
  * This function optimizes a table.
- * @param string $table - the table to be optimized
- * @return how much it was gained
+ * @param string $table The table to be optimized
+ * @return int How much space was gained
  */
 function smf_db_optimize_table($table)
 {
@@ -91,20 +91,53 @@ function smf_db_optimize_table($table)
 
 	$table = str_replace('{db_prefix}', $db_prefix, $table);
 
+	$pg_tables = array('pg_catalog','information_schema');
+
 	$request = $smcFunc['db_query']('', '
-			VACUUM ANALYZE {raw:table}',
-			array(
-				'table' => $table,
-			)
-		);
-	if (!$request)
-		return -1;
+		SELECT pg_relation_size(C.oid) AS "size"
+		FROM pg_class C
+		LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
+		WHERE nspname NOT IN ({array_string:pg_tables})
+		and relname = {string:table}',
+		array(
+			'table' => $table,
+			'pg_tables' => $pg_tables,
+		)
+	);
 
 	$row = $smcFunc['db_fetch_assoc']($request);
 	$smcFunc['db_free_result']($request);
 
-	if (isset($row['Data_free']))
-			return $row['Data_free'] / 1024;
+	$old_size = $row['size'];
+
+	$request = $smcFunc['db_query']('', '
+			VACUUM FULL ANALYZE {raw:table}',
+			array(
+				'table' => $table,
+			)
+		);
+
+	if (!$request)
+		return -1;
+
+	$request = $smcFunc['db_query']('', '
+		SELECT pg_relation_size(C.oid) AS "size"
+		FROM pg_class C
+		LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
+		WHERE nspname NOT IN ({array_string:pg_tables})
+		and relname = {string:table}',
+		array(
+			'table' => $table,
+			'pg_tables' => $pg_tables,
+		)
+	);
+
+
+	$row = $smcFunc['db_fetch_assoc']($request);
+	$smcFunc['db_free_result']($request);
+
+	if (isset($row['size']))
+			return ($old_size - $row['size']) / 1024;
 	else
 		return 0;
 }
@@ -112,9 +145,10 @@ function smf_db_optimize_table($table)
 /**
  * This function lists all tables in the database.
  * The listing could be filtered according to $filter.
- * @param mixed $db, string holding the table name, or false, default false
- * @param mixed $filter, string to filter by, or false, default false
- * @return array, an array of table names. (strings)
+ *
+ * @param string|boolean $db string The database name or false to use the current DB
+ * @param string|boolean $filter String to filter by or false to list all tables
+ * @return array An array of table names
  */
 function smf_db_list_tables($db = false, $filter = false)
 {
@@ -141,88 +175,10 @@ function smf_db_list_tables($db = false, $filter = false)
 }
 
 /**
- * Gets all the necessary INSERTs for the table named table_name.
- * It goes in 250 row segments.
- * @param string $tableName - the table to create the inserts for.
- * @return string, the query to insert the data back in, or an empty
- *  string if the table was empty.
- */
-function smf_db_insert_sql($tableName, $new_table = false)
-{
-	global $smcFunc, $db_prefix;
-	static $start = 0, $num_rows, $fields, $limit;
-
-	if ($new_table)
-	{
-		$limit = strstr($tableName, 'log_') !== false ? 500 : 250;
-		$start = 0;
-	}
-
-	$data = '';
-	$tableName = str_replace('{db_prefix}', $db_prefix, $tableName);
-
-	// This will be handy...
-	$crlf = "\r\n";
-
-	$result = $smcFunc['db_query']('', '
-		SELECT *
-		FROM ' . $tableName . '
-		LIMIT ' . $start . ', ' . $limit,
-		array(
-			'security_override' => true,
-		)
-	);
-
-	// The number of rows, just for record keeping and breaking INSERTs up.
-	$num_rows = $smcFunc['db_num_rows']($result);
-
-	if ($num_rows == 0)
-		return '';
-
-	if ($new_table)
-	{
-		$fields = array_keys($smcFunc['db_fetch_assoc']($result));
-		$smcFunc['db_data_seek']($result, 0);
-	}
-
-	// Start it off with the basic INSERT INTO.
-	$data = '';
-	$insert_msg = $crlf . 'INSERT INTO ' . $tableName . $crlf . "\t" . '(' . implode(', ', $fields) . ')' . $crlf . 'VALUES ' . $crlf . "\t";
-
-	// Loop through each row.
-	while ($row = $smcFunc['db_fetch_assoc']($result))
-	{
-		// Get the fields in this row...
-		$field_list = array();
-
-		foreach ($row as $key => $item)
-		{
-			// Try to figure out the type of each field. (NULL, number, or 'string'.)
-			if (!isset($item))
-				$field_list[] = 'NULL';
-			elseif (is_numeric($item) && (int) $item == $item)
-				$field_list[] = $item;
-			else
-				$field_list[] = '\'' . $smcFunc['db_escape_string']($item) . '\'';
-		}
-
-		// 'Insert' the data.
-		$data .= $insert_msg . '(' . implode(', ', $field_list) . ');' . $crlf;
-	}
-	$smcFunc['db_free_result']($result);
-
-	$data .= $crlf;
-
-	$start += $limit;
-
-	return $data;
-}
-
-/**
  * Dumps the schema (CREATE) for a table.
  * @todo why is this needed for?
- * @param string $tableName - the table
- * @return string - the CREATE statement as string
+ * @param string $tableName The name of the table
+ * @return string The "CREATE TABLE" SQL string for this table
  */
 function smf_db_table_sql($tableName)
 {
@@ -233,8 +189,11 @@ function smf_db_table_sql($tableName)
 	// This will be needed...
 	$crlf = "\r\n";
 
+	// Drop it if it exists.
+	$schema_create = 'DROP TABLE IF EXISTS ' . $tableName . ';' . $crlf . $crlf;
+
 	// Start the create table...
-	$schema_create = 'CREATE TABLE ' . $tableName . ' (' . $crlf;
+	$schema_create .= 'CREATE TABLE ' . $tableName . ' (' . $crlf;
 	$index_create = '';
 	$seq_create = '';
 
@@ -301,7 +260,7 @@ function smf_db_table_sql($tableName)
 			'table' => $tableName,
 		)
 	);
-	$indexes = array();
+	
 	while ($row = $smcFunc['db_fetch_assoc']($result))
 	{
 		if ($row['is_primary'])
@@ -324,10 +283,15 @@ function smf_db_table_sql($tableName)
 
 /**
  *  Get the version number.
- *  @return string - the version
+ *  @return string The version
  */
 function smf_db_get_version()
 {
+	static $ver;
+
+	if(!empty($ver))
+		return $ver;
+
 	global $smcFunc;
 
 	$request = $smcFunc['db_query']('', '
@@ -340,3 +304,15 @@ function smf_db_get_version()
 
 	return $ver;
 }
+
+/**
+ * Return PostgreSQL
+ *
+ * @return string The database engine we are using
+*/
+function smf_db_get_engine()
+{
+	return 'PostgreSQL';
+}
+
+?>

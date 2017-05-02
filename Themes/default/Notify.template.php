@@ -3,21 +3,24 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines
- * @copyright 2012 Simple Machines
+ * @author Simple Machines http://www.simplemachines.org
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
+/**
+ * The main notification bar.
+ */
 function template_main()
 {
-	global $context, $settings, $options, $txt, $scripturl;
+	global $context, $txt, $scripturl;
 
 	echo '
 		<div class="cat_bar">
 			<h3 class="catbg">
-				<img src="', $settings['images_url'], '/email_sm.png" alt="" class="icon" />', $txt['notify'], '
+				<span class="generic_icons mail icon"></span>', $txt['notify'], '
 			</h3>
 		</div>
 		<div class="roundframe centertext">
@@ -28,14 +31,17 @@ function template_main()
 		</div>';
 }
 
+/**
+ * Board notification bar.
+ */
 function template_notify_board()
 {
-	global $context, $settings, $options, $txt, $scripturl;
+	global $context, $txt, $scripturl;
 
 	echo '
 		<div class="cat_bar">
 			<h3 class="catbg">
-				<img src="', $settings['images_url'], '/email_sm.png" alt="" class="icon" />', $txt['notify'], '
+				<span class="generic_icons mail icon"></span>', $txt['notify'], '
 			</h3>
 		</div>
 		<div class="roundframe centertext">

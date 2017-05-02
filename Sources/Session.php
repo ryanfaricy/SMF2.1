@@ -11,21 +11,21 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Attempt to start the session, unless it already has been.
  */
 function loadSession()
 {
-	global $HTTP_SESSION_VARS, $modSettings, $boardurl, $sc;
+	global $modSettings, $boardurl, $sc;
 
 	// Attempt to change a few PHP settings.
 	@ini_set('session.use_cookies', true);
@@ -62,6 +62,7 @@ function loadSession()
 		// Use database sessions? (they don't work in 4.1.x!)
 		if (!empty($modSettings['databaseSession_enable']))
 		{
+			@ini_set('session.serialize_handler', 'php');
 			session_set_save_handler('sessionOpen', 'sessionClose', 'sessionRead', 'sessionWrite', 'sessionDestroy', 'sessionGC');
 			@ini_set('session.gc_probability', '1');
 		}
@@ -70,14 +71,7 @@ function loadSession()
 
 		// Use cache setting sessions?
 		if (empty($modSettings['databaseSession_enable']) && !empty($modSettings['cache_enable']) && php_sapi_name() != 'cli')
-		{
 			call_integration_hook('integrate_session_handlers');
-			// @todo move these to a plugin.
-			if (function_exists('mmcache_set_session_handlers'))
-				mmcache_set_session_handlers();
-			elseif (function_exists('eaccelerator_set_session_handlers'))
-				eaccelerator_set_session_handlers();
-		}
 
 		session_start();
 
@@ -90,7 +84,7 @@ function loadSession()
 	if (!isset($_SESSION['session_var']))
 	{
 		$_SESSION['session_value'] = md5(session_id() . mt_rand());
-		$_SESSION['session_var'] = substr(preg_replace('~^\d+~', '', sha1(mt_rand() . session_id() . mt_rand())), 0, rand(7, 12));
+		$_SESSION['session_var'] = substr(preg_replace('~^\d+~', '', sha1(mt_rand() . session_id() . mt_rand())), 0, mt_rand(7, 12));
 	}
 	$sc = $_SESSION['session_value'];
 }
@@ -99,9 +93,9 @@ function loadSession()
  * Implementation of sessionOpen() replacing the standard open handler.
  * It simply returns true.
  *
- * @param string $save_path
- * @param string $session_name
- * @return bool
+ * @param string $save_path The path to save the session to
+ * @param string $session_name The name of the session
+ * @return boolean Always returns true
  */
 function sessionOpen($save_path, $session_name)
 {
@@ -112,7 +106,7 @@ function sessionOpen($save_path, $session_name)
  * Implementation of sessionClose() replacing the standard close handler.
  * It simply returns true.
  *
- * @return bool
+ * @return boolean Always returns true
  */
 function sessionClose()
 {
@@ -122,15 +116,15 @@ function sessionClose()
 /**
  * Implementation of sessionRead() replacing the standard read handler.
  *
- * @param string $session_id
- * @return string
+ * @param string $session_id The session ID
+ * @return string The session data
  */
 function sessionRead($session_id)
 {
 	global $smcFunc;
 
 	if (preg_match('~^[A-Za-z0-9,-]{16,64}$~', $session_id) == 0)
-		return false;
+		return '';
 
 	// Look for it in the database.
 	$result = $smcFunc['db_query']('', '
@@ -145,15 +139,15 @@ function sessionRead($session_id)
 	list ($sess_data) = $smcFunc['db_fetch_row']($result);
 	$smcFunc['db_free_result']($result);
 
-	return $sess_data;
+	return $sess_data != null ? $sess_data : '';
 }
 
 /**
  * Implementation of sessionWrite() replacing the standard write handler.
  *
- * @param string $session_id
- * @param string $data
- * @return bool
+ * @param string $session_id The session ID
+ * @param string $data The data to write to the session
+ * @return boolean Whether the info was successfully written
  */
 function sessionWrite($session_id, $data)
 {
@@ -163,7 +157,7 @@ function sessionWrite($session_id, $data)
 		return false;
 
 	// First try to update an existing row...
-	$result = $smcFunc['db_query']('', '
+	$smcFunc['db_query']('', '
 		UPDATE {db_prefix}sessions
 		SET data = {string:data}, last_update = {int:last_update}
 		WHERE session_id = {string:session_id}',
@@ -176,21 +170,21 @@ function sessionWrite($session_id, $data)
 
 	// If that didn't work, try inserting a new one.
 	if ($smcFunc['db_affected_rows']() == 0)
-		$result = $smcFunc['db_insert']('ignore',
+		$smcFunc['db_insert']('ignore',
 			'{db_prefix}sessions',
 			array('session_id' => 'string', 'data' => 'string', 'last_update' => 'int'),
 			array($session_id, $data, time()),
 			array('session_id')
 		);
 
-	return $result;
+	return ($smcFunc['db_affected_rows']() == 0 ? false : true);
 }
 
 /**
  * Implementation of sessionDestroy() replacing the standard destroy handler.
  *
- * @param string $session_id
- * @return bool
+ * @param string $session_id The session ID
+ * @return boolean Whether the session was successfully destroyed
  */
 function sessionDestroy($session_id)
 {
@@ -200,21 +194,23 @@ function sessionDestroy($session_id)
 		return false;
 
 	// Just delete the row...
-	return $smcFunc['db_query']('', '
+	$smcFunc['db_query']('', '
 		DELETE FROM {db_prefix}sessions
 		WHERE session_id = {string:session_id}',
 		array(
 			'session_id' => $session_id,
 		)
 	);
+
+	return true;
 }
 
 /**
  * Implementation of sessionGC() replacing the standard gc handler.
  * Callback for garbage collection.
  *
- * @param int $max_lifetime
- * @return bool
+ * @param int $max_lifetime The maximum lifetime (in seconds) - prevents deleting of sessions older than this
+ * @return boolean Whether the option was successful
  */
 function sessionGC($max_lifetime)
 {
@@ -225,11 +221,13 @@ function sessionGC($max_lifetime)
 		$max_lifetime = max($modSettings['databaseSession_lifetime'], 60);
 
 	// Clean up after yerself ;).
-	return $smcFunc['db_query']('', '
+	$smcFunc['db_query']('', '
 		DELETE FROM {db_prefix}sessions
 		WHERE last_update < {int:last_update}',
 		array(
 			'last_update' => time() - $max_lifetime,
 		)
 	);
+
+	return ($smcFunc['db_affected_rows']() == 0 ? false : true);
 }

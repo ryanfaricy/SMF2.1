@@ -7,18 +7,19 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Get a list of versions that are currently installed on the server.
- * @param array $checkFor
+ * @param array $checkFor An array of what to check versions for - can contain one or more of 'gd', 'imagemagick', 'db_server', 'phpa', 'memcache', 'xcache', 'apc', 'php' or 'server'
+ * @return array An array of versions (keys are same as what was in $checkFor, values are the versions)
  */
 function getServerVersions($checkFor)
 {
@@ -35,12 +36,25 @@ function getServerVersions($checkFor)
 		$versions['gd'] = array('title' => $txt['support_versions_gd'], 'version' => $temp['GD Version']);
 	}
 
-	// Why not have a look at ImageMagick? If it is, we should show version information for it too.
-	if (in_array('imagick', $checkFor) && class_exists('Imagick'))
+	// Why not have a look at ImageMagick? If it's installed, we should show version information for it too.
+	if (in_array('imagemagick', $checkFor) && (class_exists('Imagick') || function_exists('MagickGetVersionString')))
 	{
-		$temp = New Imagick;
-		$temp2 = $temp->getVersion();
-		$versions['imagick'] = array('title' => $txt['support_versions_imagick'], 'version' => $temp2['versionString']);
+		if (class_exists('Imagick'))
+		{
+			$temp = New Imagick;
+			$temp2 = $temp->getVersion();
+			$im_version = $temp2['versionString'];
+			$extension_version = 'Imagick ' . phpversion('Imagick');
+		}
+		else
+		{
+			$im_version = MagickGetVersionString();
+			$extension_version = 'MagickWand ' . phpversion('MagickWand');
+		}
+
+		// We already know it's ImageMagick and the website isn't needed...
+		$im_version = str_replace(array('ImageMagick ', ' http://www.imagemagick.org'), '', $im_version);
+		$versions['imagemagick'] = array('title' => $txt['support_versions_imagemagick'], 'version' => $im_version . ' (' . $extension_version . ')');
 	}
 
 	// Now lets check for the Database.
@@ -51,6 +65,9 @@ function getServerVersions($checkFor)
 			trigger_error('getServerVersions(): you need to be connected to the database in order to get its server version', E_USER_NOTICE);
 		else
 		{
+			$versions['db_engine'] = array('title' => sprintf($txt['support_versions_db_engine'], $smcFunc['db_title']), 'version' => '');
+			$versions['db_engine']['version'] = $smcFunc['db_get_engine']();
+
 			$versions['db_server'] = array('title' => sprintf($txt['support_versions_db'], $smcFunc['db_title']), 'version' => '');
 			$versions['db_server']['version'] = $smcFunc['db_get_version']();
 		}
@@ -61,10 +78,6 @@ function getServerVersions($checkFor)
 		get_memcached_server();
 
 	// Check to see if we have any accelerators installed...
-	if (in_array('mmcache', $checkFor) && defined('MMCACHE_VERSION'))
-		$versions['mmcache'] = array('title' => 'Turck MMCache', 'version' => MMCACHE_VERSION);
-	if (in_array('eaccelerator', $checkFor) && defined('EACCELERATOR_VERSION'))
-		$versions['eaccelerator'] = array('title' => 'eAccelerator', 'version' => EACCELERATOR_VERSION);
 	if (in_array('phpa', $checkFor) && isset($_PHPA))
 		$versions['phpa'] = array('title' => 'ionCube PHP-Accelerator', 'version' => $_PHPA['VERSION']);
 	if (in_array('apc', $checkFor) && extension_loaded('apc'))
@@ -92,11 +105,12 @@ function getServerVersions($checkFor)
  * - returns an array containing information on source files, templates and
  *   language files found in the default theme directory (grouped by language).
  *
- * @param array &$versionOptions
+ * @param array &$versionOptions An array of options. Can contain one or more of 'include_ssi', 'include_subscriptions', 'include_tasks' and 'sort_results'
+ * @return array An array of file version info.
  */
 function getFileVersions(&$versionOptions)
 {
-	global $boarddir, $sourcedir, $settings;
+	global $boarddir, $sourcedir, $settings, $tasksdir;
 
 	// Default place to find the languages would be the default theme dir.
 	$lang_dir = $settings['default_theme_dir'] . '/languages';
@@ -106,6 +120,7 @@ function getFileVersions(&$versionOptions)
 		'default_template_versions' => array(),
 		'template_versions' => array(),
 		'default_language_versions' => array(),
+		'tasks_versions' => array(),
 	);
 
 	// Find the version in SSI.php's file header.
@@ -158,6 +173,30 @@ function getFileVersions(&$versionOptions)
 		}
 	}
 	$sources_dir->close();
+
+	// Load all the files in the tasks directory.
+	if (!empty($versionOptions['include_tasks']))
+	{
+		$tasks_dir = dir($tasksdir);
+		while ($entry = $tasks_dir->read())
+		{
+			if (substr($entry, -4) === '.php' && !is_dir($tasksdir . '/' . $entry) && $entry !== 'index.php')
+			{
+				// Read the first 4k from the file.... enough for the header.
+				$fp = fopen($tasksdir . '/' . $entry, 'rb');
+				$header = fread($fp, 4096);
+				fclose($fp);
+
+				// Look for the version comment in the file header.
+				if (preg_match('~\*\s@version\s+(.+)[\s]{2}~i', $header, $match) == 1)
+					$version_info['tasks_versions'][$entry] = $match[1];
+				// It wasn't found, but the file was... show a '??'.
+				else
+					$version_info['tasks_versions'][$entry] = '??';
+			}
+		}
+		$tasks_dir->close();
+	}
 
 	// Load all the files in the default template directory - and the current theme if applicable.
 	$directories = array('default_template_versions' => $settings['default_theme_dir']);
@@ -218,6 +257,7 @@ function getFileVersions(&$versionOptions)
 		ksort($version_info['default_template_versions']);
 		ksort($version_info['template_versions']);
 		ksort($version_info['default_language_versions']);
+		ksort($version_info['tasks_versions']);
 
 		// For languages sort each language too.
 		foreach ($version_info['default_language_versions'] as $language => $dummy)
@@ -243,7 +283,7 @@ function getFileVersions(&$versionOptions)
  * - attempts to create a backup file and will use it should the writing of the
  *   new settings file fail
  *
- * @param array $config_vars
+ * @param array $config_vars An array of one or more variables to update
  */
 function updateSettingsFile($config_vars)
 {
@@ -364,7 +404,6 @@ function updateSettingsFile($config_vars)
 	if (filemtime($boarddir . '/Settings.php') === $last_settings_change)
 	{
 		// save the old before we do anything
-		$file = $boarddir . '/Settings.php';
 		$settings_backup_fail = !@is_writable($boarddir . '/Settings_bak.php') || !@copy($boarddir . '/Settings.php', $boarddir . '/Settings_bak.php');
 		$settings_backup_fail = !$settings_backup_fail ? (!file_exists($boarddir . '/Settings_bak.php') || filesize($boarddir . '/Settings_bak.php') === 0) : $settings_backup_fail;
 
@@ -382,6 +421,11 @@ function updateSettingsFile($config_vars)
 				@copy($boarddir . '/Settings_bak.php', $boarddir . '/Settings.php');
 		}
 	}
+
+	// Even though on normal installations the filemtime should prevent this being used by the installer incorrectly
+	// it seems that there are times it might not. So let's MAKE it dump the cache.
+	if (function_exists('opcache_invalidate'))
+		opcache_invalidate($boarddir . '/Settings.php', true);
 }
 
 /**
@@ -389,6 +433,8 @@ function updateSettingsFile($config_vars)
  * - Done separately from updateSettingsFile to avoid race conditions
  *   which can occur during a db error
  * - If it fails Settings.php will assume 0
+ *
+ * @param int $time The timestamp of the last DB error
  */
 function updateDbLastError($time)
 {
@@ -399,7 +445,7 @@ function updateDbLastError($time)
 	@touch($boarddir . '/' . 'Settings.php');
 }
 /**
- * Saves the admins current preferences to the database.
+ * Saves the admin's current preferences to the database.
  */
 function updateAdminPreferences()
 {
@@ -410,7 +456,7 @@ function updateAdminPreferences()
 		return false;
 
 	// This is what we'll be saving.
-	$options['admin_preferences'] = serialize($context['admin_preferences']);
+	$options['admin_preferences'] = json_encode($context['admin_preferences']);
 
 	// Just check we haven't ended up with something theme exclusive somehow.
 	$smcFunc['db_query']('', '
@@ -440,6 +486,10 @@ function updateAdminPreferences()
  * - loads all users who are admins or have the admin forum permission.
  * - uses the email template and replacements passed in the parameters.
  * - sends them an email.
+ *
+ * @param string $template Which email template to use
+ * @param array $replacements An array of items to replace the variables in the template
+ * @param array $additional_recipients An array of arrays of info for additional recipients. Should have 'id', 'email' and 'name' for each.
  */
 function emailAdmins($template, $replacements = array(), $additional_recipients = array())
 {
@@ -448,39 +498,28 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 	// We certainly want this.
 	require_once($sourcedir . '/Subs-Post.php');
 
-	// Load all groups which are effectively admins.
-	$request = $smcFunc['db_query']('', '
-		SELECT id_group
-		FROM {db_prefix}permissions
-		WHERE permission = {string:admin_forum}
-			AND add_deny = {int:add_deny}
-			AND id_group != {int:id_group}',
-		array(
-			'add_deny' => 1,
-			'id_group' => 0,
-			'admin_forum' => 'admin_forum',
-		)
-	);
-	$groups = array(1);
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-		$groups[] = $row['id_group'];
-	$smcFunc['db_free_result']($request);
+	// Load all members which are effectively admins.
+	require_once($sourcedir . '/Subs-Members.php');
+	$members = membersAllowedTo('admin_forum');
+
+	// Load their alert preferences
+	require_once($sourcedir . '/Subs-Notify.php');
+	$prefs = getNotifyPrefs($members, 'announcements', true);
 
 	$request = $smcFunc['db_query']('', '
 		SELECT id_member, member_name, real_name, lngfile, email_address
 		FROM {db_prefix}members
-		WHERE (id_group IN ({array_int:group_list}) OR FIND_IN_SET({raw:group_array_implode}, additional_groups) != 0)
-			AND notify_types != {int:notify_types}
-		ORDER BY lngfile',
+		WHERE id_member IN({array_int:members})',
 		array(
-			'group_list' => $groups,
-			'notify_types' => 4,
-			'group_array_implode' => implode(', additional_groups) != 0 OR FIND_IN_SET(', $groups),
+			'members' => $members,
 		)
 	);
 	$emails_sent = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
+		if (empty($prefs[$row['id_member']]['announcements']))
+			continue;
+
 		// Stick their particulars in the replacement data.
 		$replacements['IDMEMBER'] = $row['id_member'];
 		$replacements['REALNAME'] = $row['member_name'];
@@ -490,7 +529,7 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 		$emaildata = loadEmailTemplate($template, $replacements, empty($row['lngfile']) || empty($modSettings['userLanguage']) ? $language : $row['lngfile']);
 
 		// Then send the actual email.
-		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
+		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, $template, $emaildata['is_html'], 1);
 
 		// Track who we emailed so we don't do it twice.
 		$emails_sent[] = $row['email_address'];
@@ -512,6 +551,6 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 			$emaildata = loadEmailTemplate($template, $replacements, empty($recipient['lang']) || empty($modSettings['userLanguage']) ? $language : $recipient['lang']);
 
 			// Send off the email.
-			sendmail($recipient['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
+			sendmail($recipient['email'], $emaildata['subject'], $emaildata['body'], null, $template, $emaildata['is_html'], 1);
 		}
 }

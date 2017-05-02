@@ -9,14 +9,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Creates a wave file that spells the letters of $word.
@@ -24,12 +24,12 @@ if (!defined('SMF'))
  * Used by VerificationCode() (Register.php).
  *
  * @param string $word
- * @return bool false on failure
+ * @return boolean false on failure
  */
 
 function createWaveFile($word)
 {
-	global $settings, $user_info, $context;
+	global $settings, $user_info;
 
 	// Allow max 2 requests per 20 seconds.
 	if (($ip = cache_get_data('wave_file/' . $user_info['ip'], 20)) > 2 || ($ip2 = cache_get_data('wave_file/' . $user_info['ip2'], 20)) > 2)
@@ -38,7 +38,8 @@ function createWaveFile($word)
 	cache_put_data('wave_file/' . $user_info['ip2'], $ip2 ? $ip2 + 1 : 1, 20);
 
 	// Fixate randomization for this word.
-	mt_srand(end(unpack('n', md5($word . session_id()))));
+    $tmp = unpack('n', md5($word . session_id()));
+	mt_srand(end($tmp));
 
 	// Try to see if there's a sound font in the user's language.
 	if (file_exists($settings['default_theme_dir'] . '/fonts/sound/a.' . $user_info['language'] . '.wav'))
@@ -66,8 +67,7 @@ function createWaveFile($word)
 		$sound_letter = substr($sound_letter, strpos($sound_letter, 'data') + 8);
 		switch ($word{$i} === 's' ? 0 : mt_rand(0, 2))
 		{
-			case 0:
-				for ($j = 0, $n = strlen($sound_letter); $j < $n; $j++)
+			case 0 : for ($j = 0, $n = strlen($sound_letter); $j < $n; $j++)
 					for ($k = 0, $m = round(mt_rand(15, 25) / 10); $k < $m; $k++)
 						$sound_word .= $word{$i} === 's' ? $sound_letter{$j} : chr(mt_rand(max(ord($sound_letter{$j}) - 1, 0x00), min(ord($sound_letter{$j}) + 1, 0xFF)));
 			break;

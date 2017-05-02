@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1; Editor
+// Version: 2.1 Beta 3; Editor
 global $editortxt;
 
 $editortxt['Bold'] = 'Bold';
@@ -43,7 +43,7 @@ $editortxt['URL:'] = 'URL:';
 $editortxt['Insert a link'] = 'Insert a link';
 $editortxt['Unlink'] = 'Unlink';
 $editortxt['More'] = 'More';
-$editortxt['Insert an emoticon'] = 'Insert an emoticon';
+$editortxt['Insert an emoticon'] = 'Insert a smiley';
 $editortxt['Video URL:'] = 'Video URL:';
 $editortxt['Insert'] = 'Insert';
 $editortxt['Insert a YouTube video'] = 'Insert a YouTube video';
@@ -52,5 +52,7 @@ $editortxt['Insert current time'] = 'Insert current time';
 $editortxt['Print'] = 'Print';
 $editortxt['Preformatted Text'] = 'Preformatted Text';
 $editortxt['View source'] = 'View source';
+$editortxt['Pre'] = 'Preformatted text';
+$editortxt['flash'] = 'Insert Flash';
 
 ?>

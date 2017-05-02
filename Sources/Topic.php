@@ -8,14 +8,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Locks a topic... either by way of a moderator or the topic starter.
@@ -91,7 +91,7 @@ function LockTopic()
 	sendNotifications($topic, empty($locked) ? 'unlock' : 'lock');
 
 	// Back to the topic!
-	redirectexit('topic=' . $topic . '.' . $_REQUEST['start'] . (WIRELESS ? ';moderate' : ''));
+	redirectexit('topic=' . $topic . '.' . $_REQUEST['start'] . ';moderate');
 }
 
 /**
@@ -106,14 +106,10 @@ function LockTopic()
  */
 function Sticky()
 {
-	global $modSettings, $topic, $board, $sourcedir, $smcFunc;
+	global $topic, $board, $sourcedir, $smcFunc;
 
 	// Make sure the user can sticky it, and they are stickying *something*.
 	isAllowedTo('make_sticky');
-
-	// You shouldn't be able to (un)sticky a topic if the setting is disabled.
-	if (empty($modSettings['enableStickyTopics']))
-		fatal_lang_error('cannot_make_sticky', false);
 
 	// You can't sticky a board or something!
 	if (empty($topic))
@@ -155,5 +151,5 @@ function Sticky()
 		sendNotifications($topic, 'sticky');
 
 	// Take them back to the now stickied topic.
-	redirectexit('topic=' . $topic . '.' . $_REQUEST['start'] . (WIRELESS ? ';moderate' : ''));
+	redirectexit('topic=' . $topic . '.' . $_REQUEST['start'] . ';moderate');
 }

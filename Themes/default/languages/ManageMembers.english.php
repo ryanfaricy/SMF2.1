@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1; ManageMembers
+// Version: 2.1 Beta 3; ManageMembers
 
 global $context;
 
@@ -13,6 +13,7 @@ $txt['membergroups_modify'] = 'Modify';
 $txt['membergroups_add_group'] = 'Add group';
 $txt['membergroups_regular'] = 'Regular groups';
 $txt['membergroups_post'] = 'Post count based groups';
+$txt['membergroups_guests_na'] = 'n/a';
 
 $txt['membergroups_group_name'] = 'Membergroup name';
 $txt['membergroups_new_board'] = 'Visible Boards';
@@ -23,6 +24,9 @@ $txt['membergroups_new_as_type'] = 'by type';
 $txt['membergroups_new_as_copy'] = 'based off of';
 $txt['membergroups_new_copy_none'] = '(none)';
 $txt['membergroups_can_edit_later'] = 'You can edit them later.';
+$txt['membergroups_can_manage_access'] = 'This group can see all boards because they have the power to manage boards.';
+
+$txt['membergroups_cannot_delete_paid'] = 'This group cannot be deleted, it is currently in use by the following paid subscription(s): %1$s';
 
 $txt['membergroups_edit_group'] = 'Edit Membergroup';
 $txt['membergroups_edit_name'] = 'Group name';
@@ -35,7 +39,7 @@ $txt['membergroups_edit_hidden_no'] = 'Visible';
 $txt['membergroups_edit_hidden_boardindex'] = 'Visible - Apart from in group key';
 $txt['membergroups_edit_hidden_all'] = 'Invisible';
 // Do not use numeric entities in the below string.
-$txt['membergroups_edit_hidden_warning'] = 'Are you sure you want to disallow assignment of this group as a users primary group?\\n\\nDoing so will restrict assignment to additional groups only, and will update all current &quot;primary&quot; members to have it as an additional group only.';
+$txt['membergroups_edit_hidden_warning'] = 'Are you sure you want to disallow assignment of this group as a users primary group?\\n\\nDoing so will restrict assignment to additional groups only, and will update all current &quot;primary&quot; members to have it as an additional group only.\\n\\nIt will also remove the group as moderator from any boards it is currently assigned to moderate.';
 $txt['membergroups_edit_desc'] = 'Group description';
 $txt['membergroups_edit_group_type'] = 'Group type';
 $txt['membergroups_edit_select_group_type'] = 'Select Group type';
@@ -48,12 +52,17 @@ $txt['membergroups_min_posts'] = 'Required posts';
 $txt['membergroups_online_color'] = 'Color in online list';
 $txt['membergroups_icon_count'] = 'Number of icon images';
 $txt['membergroups_icon_image'] = 'Icon image filename';
-$txt['membergroups_icon_image_note'] = 'you can use $language for the language of the user';
+$txt['membergroups_icon_image_note'] = 'You can upload custom images to the forum\'s default theme directory to be able to select them here. Different images can be used in different themes, just give them the same name.';
+$txt['membergroups_icon_image_size'] = 'Max size allowed 128x32px';
 $txt['membergroups_max_messages'] = 'Max personal messages';
 $txt['membergroups_max_messages_note'] = '0 = unlimited';
+$txt['membergroups_tfa_force'] = 'Force Two-Factor-Authentication (2FA) for this membergroup';
+$txt['membergroups_tfa_force_note'] = 'Be sure to warn your users before you activate this!';
 $txt['membergroups_edit_save'] = 'Save';
 $txt['membergroups_delete'] = 'Delete';
 $txt['membergroups_confirm_delete'] = 'Are you sure you want to delete this group?';
+$txt['membergroups_confirm_delete_mod'] = 'This group is assigned to moderate one or more boards. Are you sure you want to delete it?';
+$txt['membergroups_swap_mod'] = 'This group is assigned to moderate one or more boards. Changing it to a post group will result in that group being dropped as moderator of those boards.';
 
 $txt['membergroups_members_title'] = 'Viewing Group';
 $txt['membergroups_members_group_members'] = 'Group Members';
@@ -73,7 +82,7 @@ $txt['membergroups_postgroups'] = 'Post groups';
 $txt['membergroups_settings'] = 'Membergroup Settings';
 $txt['groups_manage_membergroups'] = 'Groups allowed to change membergroups';
 $txt['membergroups_select_permission_type'] = 'Select permission profile';
-$txt['membergroups_images_url'] = '{theme URL}/images/';
+$txt['membergroups_images_url'] = 'Themes/default/images/membericons/';
 $txt['membergroups_select_visible_boards'] = 'Show boards';
 $txt['membergroups_members_top'] = 'Members';
 $txt['membergroups_name'] = 'Name';
@@ -126,3 +135,5 @@ $txt['dont_check_for_duplicate'] = 'Don\'t check for duplicates';
 $txt['duplicates'] = 'Duplicates';
 
 $txt['not_activated'] = 'Not activated';
+
+?>

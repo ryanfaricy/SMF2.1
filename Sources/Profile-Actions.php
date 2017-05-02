@@ -7,23 +7,23 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Activate an account.
  *
- * @param int $memID the member ID
+ * @param int $memID The ID of the member whose account we're activating
  */
 function activateAccount($memID)
 {
-	global $sourcedir, $context, $user_profile, $modSettings, $user_info;
+	global $sourcedir, $context, $user_profile, $modSettings;
 
 	isAllowedTo('moderate_forum');
 
@@ -48,7 +48,7 @@ function activateAccount($memID)
 		logAction('approve_member', array('member' => $memID), 'admin');
 
 		// If we are doing approval, update the stats for the member just in case.
-		if (in_array($user_profile[$memID]['is_activated'], array(3, 4, 13, 14)))
+		if (in_array($user_profile[$memID]['is_activated'], array(3, 4, 5, 13, 14, 15)))
 			updateSettings(array('unapprovedMembers' => ($modSettings['unapprovedMembers'] > 1 ? $modSettings['unapprovedMembers'] - 1 : 0)));
 
 		// Make sure we update the stats too.
@@ -62,12 +62,12 @@ function activateAccount($memID)
 /**
  * Issue/manage an user's warning status.
  *
- * @param int $memID
+ * @param int $memID The ID of the user
  */
 function issueWarning($memID)
 {
 	global $txt, $scripturl, $modSettings, $user_info, $mbname;
-	global $context, $cur_profile, $memberContext, $smcFunc, $sourcedir;
+	global $context, $cur_profile, $smcFunc, $sourcedir;
 
 	// Get all the actual settings.
 	list ($modSettings['warning_enable'], $modSettings['user_limit']) = explode(',', $modSettings['warning_settings']);
@@ -131,17 +131,13 @@ function issueWarning($memID)
 	if (isset($_POST['save']))
 	{
 		// Security is good here.
-		checkSession('post');
+		checkSession();
 
 		// This cannot be empty!
 		$_POST['warn_reason'] = isset($_POST['warn_reason']) ? trim($_POST['warn_reason']) : '';
 		if ($_POST['warn_reason'] == '' && !$context['user']['is_owner'])
 			$issueErrors[] = 'warning_no_reason';
 		$_POST['warn_reason'] = $smcFunc['htmlspecialchars']($_POST['warn_reason']);
-
-		// If the value hasn't changed it's either no JS or a real no change (Which this will pass)
-		if ($_POST['warning_level'] == 'SAME')
-			$_POST['warning_level'] = $_POST['warning_level_nojs'];
 
 		$_POST['warning_level'] = (int) $_POST['warning_level'];
 		$_POST['warning_level'] = max(0, min(100, $_POST['warning_level']));
@@ -164,13 +160,13 @@ function issueWarning($memID)
 				require_once($sourcedir . '/Subs-Post.php');
 				$from = array(
 					'id' => 0,
-					'name' => $context['forum_name'],
-					'username' => $context['forum_name'],
+					'name' => $context['forum_name_html_safe'],
+					'username' => $context['forum_name_html_safe'],
 				);
 				sendpm(array('to' => array($memID), 'bcc' => array()), $_POST['warn_sub'], $_POST['warn_body'], false, $from);
 
 				// Log the notice!
-				$smcFunc['db_insert']('',
+				$id_notice = $smcFunc['db_insert']('',
 					'{db_prefix}log_member_notices',
 					array(
 						'subject' => 'string-255', 'body' => 'string-65534',
@@ -178,9 +174,9 @@ function issueWarning($memID)
 					array(
 						$smcFunc['htmlspecialchars']($_POST['warn_sub']), $smcFunc['htmlspecialchars']($_POST['warn_body']),
 					),
-					array('id_notice')
+					array('id_notice'),
+					1
 				);
-				$id_notice = $smcFunc['db_insert_id']('{db_prefix}log_member_notices', 'id_notice');
 			}
 		}
 
@@ -252,7 +248,6 @@ function issueWarning($memID)
 			'notify_body' => isset($_POST['warn_body']) ? $_POST['warn_body'] : '',
 			'body_preview' => $warning_body,
 		);
-// 		print_r($context['warning_data']);die();
 	}
 
 	if (!empty($issueErrors))
@@ -284,7 +279,7 @@ function issueWarning($memID)
 	$listOptions = array(
 		'id' => 'view_warnings',
 		'title' => $txt['profile_viewwarning_previous_warnings'],
-		'items_per_page' => $modSettings['defaultMaxMessages'],
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'no_items_label' => $txt['profile_viewwarning_no_warnings'],
 		'base_href' => $scripturl . '?action=profile;area=issuewarning;sa=user;u=' . $memID,
 		'default_sort_col' => 'log_time',
@@ -307,10 +302,10 @@ function issueWarning($memID)
 					'style' => 'width: 20%;',
 				),
 				'data' => array(
-					'function' => create_function('$warning', '
-						return $warning[\'issuer\'][\'link\'];
-					'
-					),
+					'function' => function($warning)
+					{
+						return $warning['issuer']['link'];
+					},
 				),
 				'sort' => array(
 					'default' => 'lc.member_name DESC',
@@ -335,21 +330,21 @@ function issueWarning($memID)
 					'value' => $txt['profile_warning_previous_reason'],
 				),
 				'data' => array(
-					'function' => create_function('$warning', '
-						global $scripturl, $txt, $settings;
-
-						$ret = \'
+					'function' => function($warning) use ($scripturl, $txt)
+					{
+						$ret = '
 						<div class="floatleft">
-							\' . $warning[\'reason\'] . \'
-						</div>\';
+							' . $warning['reason'] . '
+						</div>';
 
-						if (!empty($warning[\'id_notice\']))
-							$ret .= \'
+						if (!empty($warning['id_notice']))
+							$ret .= '
 						<div class="floatright">
-							<a href="\' . $scripturl . \'?action=moderate;area=notice;nid=\' . $warning[\'id_notice\'] . \'" onclick="window.open(this.href, \\\'\\\', \\\'scrollbars=yes,resizable=yes,width=400,height=250\\\');return false;" target="_blank" class="new_win" title="\' . $txt[\'profile_warning_previous_notice\'] . \'"><img src="\' . $settings[\'images_url\'] . \'/filter.png" alt="" /></a>
-						</div>\';
+							<a href="' . $scripturl . '?action=moderate;area=notice;nid=' . $warning['id_notice'] . '" onclick="window.open(this.href, \'\', \'scrollbars=yes,resizable=yes,width=400,height=250\');return false;" target="_blank" class="new_win" title="' . $txt['profile_warning_previous_notice'] . '"><span class="generic_icons filter centericon"></span></a>
+						</div>';
 
-						return $ret;'),
+						return $ret;
+					},
 				),
 			),
 			'level' => array(
@@ -408,10 +403,9 @@ function issueWarning($memID)
 	$request = $smcFunc['db_query']('', '
 		SELECT recipient_name AS template_title, body
 		FROM {db_prefix}log_comments
-		WHERE comment_type = {string:warntpl}
+		WHERE comment_type = {literal:warntpl}
 			AND (id_recipient = {int:generic} OR id_recipient = {int:current_member})',
 		array(
-			'warntpl' => 'warntpl',
 			'generic' => 0,
 			'current_member' => $user_info['id'],
 		)
@@ -442,9 +436,9 @@ function issueWarning($memID)
 }
 
 /**
- * Get the number of warnings a user has.
+ * Get the number of warnings a user has. Callback for $listOptions['get_count'] in issueWarning()
  *
- * @param int $memID
+ * @param int $memID The ID of the user
  * @return int Total number of warnings for the user
  */
 function list_getUserWarningCount($memID)
@@ -455,10 +449,9 @@ function list_getUserWarningCount($memID)
 		SELECT COUNT(*)
 		FROM {db_prefix}log_comments
 		WHERE id_recipient = {int:selected_member}
-			AND comment_type = {string:warning}',
+			AND comment_type = {literal:warning}',
 		array(
 			'selected_member' => $memID,
-			'warning' => 'warning',
 		)
 	);
 	list ($total_warnings) = $smcFunc['db_fetch_row']($request);
@@ -468,30 +461,32 @@ function list_getUserWarningCount($memID)
 }
 
 /**
- * Get the data about a users warnings.
+ * Get the data about a user's warnings. Callback function for the list in issueWarning()
  *
- * @param int $start
- * @param int $items_per_page
- * @param string $sort
- * @param int $memID, the member ID
- * @return array the preview warnings
+ * @param int $start The item to start with (for pagination purposes)
+ * @param int $items_per_page How many items to show on each page
+ * @param string $sort A string indicating how to sort the results
+ * @param int $memID The member ID
+ * @return array An array of information about the user's warnings
  */
 function list_getUserWarnings($start, $items_per_page, $sort, $memID)
 {
 	global $smcFunc, $scripturl;
 
 	$request = $smcFunc['db_query']('', '
-		SELECT IFNULL(mem.id_member, 0) AS id_member, IFNULL(mem.real_name, lc.member_name) AS member_name,
+		SELECT COALESCE(mem.id_member, 0) AS id_member, COALESCE(mem.real_name, lc.member_name) AS member_name,
 			lc.log_time, lc.body, lc.counter, lc.id_notice
 		FROM {db_prefix}log_comments AS lc
 			LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = lc.id_member)
 		WHERE lc.id_recipient = {int:selected_member}
-			AND lc.comment_type = {string:warning}
-		ORDER BY ' . $sort . '
-		LIMIT ' . $start . ', ' . $items_per_page,
+			AND lc.comment_type = {literal:warning}
+		ORDER BY {raw:sort}
+		LIMIT {int:start}, {int:max}',
 		array(
 			'selected_member' => $memID,
-			'warning' => 'warning',
+			'sort' => $sort,
+			'start' => $start,
+			'max' => $items_per_page,
 		)
 	);
 	$previous_warnings = array();
@@ -516,11 +511,11 @@ function list_getUserWarnings($start, $items_per_page, $sort, $memID)
 /**
  * Present a screen to make sure the user wants to be deleted
  *
- * @param int $memID, the member ID
+ * @param int $memID The member ID
  */
 function deleteAccount($memID)
 {
-	global $txt, $context, $user_info, $modSettings, $cur_profile, $smcFunc;
+	global $txt, $context, $modSettings, $cur_profile;
 
 	if (!$context['user']['is_owner'])
 		isAllowedTo('profile_remove_any');
@@ -530,6 +525,9 @@ function deleteAccount($memID)
 	// Permissions for removing stuff...
 	$context['can_delete_posts'] = !$context['user']['is_owner'] && allowedTo('moderate_forum');
 
+	// Show an extra option if recycling is enabled...
+	$context['show_perma_delete'] = !empty($modSettings['recycle_enable']) && !empty($modSettings['recycle_board']);
+
 	// Can they do this, or will they need approval?
 	$context['needs_approval'] = $context['user']['is_owner'] && !empty($modSettings['approveAccountDeletion']) && !allowedTo('moderate_forum');
 	$context['page_title'] = $txt['deleteAccount'] . ': ' . $cur_profile['real_name'];
@@ -538,7 +536,7 @@ function deleteAccount($memID)
 /**
  * Actually delete an account.
  *
- * @param int $memID, the member ID
+ * @param int $memID The member ID
  */
 function deleteAccount2($memID)
 {
@@ -590,12 +588,59 @@ function deleteAccount2($memID)
 	{
 		isAllowedTo('profile_remove_any');
 
+		// Before we go any further, handle possible poll vote deletion as well
+		if (!empty($_POST['deleteVotes']) && allowedTo('moderate_forum'))
+		{
+			// First we find any polls that this user has voted in...
+			$get_voted_polls = $smcFunc['db_query']('', '
+				SELECT DISTINCT id_poll
+				FROM {db_prefix}log_polls
+				WHERE id_member = {int:selected_member}',
+				array(
+					'selected_member' => $memID,
+				)
+			);
+
+			$polls_to_update = array();
+
+			while ($row = $smcFunc['db_fetch_assoc']($get_voted_polls))
+			{
+				$polls_to_update[] = $row['id_poll'];
+			}
+
+			$smcFunc['db_free_result']($get_voted_polls);
+
+			// Now we delete the votes and update the polls
+			if (!empty($polls_to_update))
+			{
+				$smcFunc['db_query']('', '
+					DELETE FROM {db_prefix}log_polls
+					WHERE id_member = {int:selected_member}',
+					array(
+						'selected_member' => $memID,
+					)
+				);
+
+				$smcFunc['db_query']('', '
+					UPDATE {db_prefix}polls
+					SET votes = votes - 1
+					WHERE id_poll IN {array_int:polls_to_update}',
+					array(
+						'polls_to_update' => $polls_to_update
+					)
+				);
+			}
+		}
+
 		// Now, have you been naughty and need your posts deleting?
 		// @todo Should this check board permissions?
-		if ($_POST['remove_type'] != 'none' && allowedTo('moderate_forum'))
+		if (!empty($_POST['deletePosts']) && in_array($_POST['remove_type'], array('posts', 'topics')) && allowedTo('moderate_forum'))
 		{
 			// Include RemoveTopics - essential for this type of work!
 			require_once($sourcedir . '/RemoveTopic.php');
+
+			$extra = empty($_POST['perma_delete']) ? ' AND t.id_board != {int:recycle_board}' : '';
+			$recycle_board = empty($modSettings['recycle_board']) ? 0 : $modSettings['recycle_board'];
 
 			// First off we delete any topics the member has started - if they wanted topics being done.
 			if ($_POST['remove_type'] == 'topics')
@@ -604,9 +649,10 @@ function deleteAccount2($memID)
 				$request = $smcFunc['db_query']('', '
 					SELECT t.id_topic
 					FROM {db_prefix}topics AS t
-					WHERE t.id_member_started = {int:selected_member}',
+					WHERE t.id_member_started = {int:selected_member}' . $extra,
 					array(
 						'selected_member' => $memID,
+						'recycle_board' => $recycle_board,
 					)
 				);
 				$topicIDs = array();
@@ -614,9 +660,9 @@ function deleteAccount2($memID)
 					$topicIDs[] = $row['id_topic'];
 				$smcFunc['db_free_result']($request);
 
-				// Actually remove the topics.
+				// Actually remove the topics. Ignore recycling if we want to perma-delete things...
 				// @todo This needs to check permissions, but we'll let it slide for now because of moderate_forum already being had.
-				removeTopics($topicIDs);
+				removeTopics($topicIDs, true, !empty($extra));
 			}
 
 			// Now delete the remaining messages.
@@ -625,9 +671,10 @@ function deleteAccount2($memID)
 				FROM {db_prefix}messages AS m
 					INNER JOIN {db_prefix}topics AS t ON (t.id_topic = m.id_topic
 						AND t.id_first_msg != m.id_msg)
-				WHERE m.id_member = {int:selected_member}',
+				WHERE m.id_member = {int:selected_member}' . $extra,
 				array(
 					'selected_member' => $memID,
+					'recycle_board' => $recycle_board,
 				)
 			);
 			// This could take a while... but ya know it's gonna be worth it in the end.
@@ -668,7 +715,7 @@ function deleteAccount2($memID)
 /**
  * Function for doing all the paid subscription stuff - kinda.
  *
- * @param int $memID
+ * @param int $memID The ID of the user whose subscriptions we're viewing
  */
 function subscriptions($memID)
 {
@@ -687,7 +734,7 @@ function subscriptions($memID)
 	foreach ($context['subscriptions'] as $id => $sub)
 	{
 		// Work out the costs.
-		$costs = @unserialize($sub['real_cost']);
+		$costs = smf_json_decode($sub['real_cost'], true);
 
 		$cost_array = array();
 		if ($sub['real_length'] == 'F')
@@ -768,7 +815,7 @@ function subscriptions($memID)
 		if (isset($context['current'][$_GET['sub_id']]))
 		{
 			// What are the details like?
-			$current_pending = @unserialize($context['current'][$_GET['sub_id']]['pending_details']);
+			$current_pending = smf_json_decode($context['current'][$_GET['sub_id']]['pending_details'], true);
 			if (!empty($current_pending))
 			{
 				$current_pending = array_reverse($current_pending);
@@ -783,7 +830,7 @@ function subscriptions($memID)
 				}
 
 				// Save the details back.
-				$pending_details = serialize($current_pending);
+				$pending_details = json_encode($current_pending);
 
 				$smcFunc['db_query']('', '
 					UPDATE {db_prefix}log_subscribed
@@ -866,7 +913,7 @@ function subscriptions($memID)
 			// What are the details like?
 			$current_pending = array();
 			if ($context['current'][$context['sub']['id']]['pending_details'] != '')
-				$current_pending = @unserialize($context['current'][$context['sub']['id']]['pending_details']);
+				$current_pending = smf_json_decode($context['current'][$context['sub']['id']]['pending_details'], true);
 			// Don't get silly.
 			if (count($current_pending) > 9)
 				$current_pending = array();
@@ -879,7 +926,7 @@ function subscriptions($memID)
 			if (!in_array($new_data, $current_pending))
 			{
 				$current_pending[] = $new_data;
-				$pending_details = serialize($current_pending);
+				$pending_details = json_encode($current_pending);
 
 				$smcFunc['db_query']('', '
 					UPDATE {db_prefix}log_subscribed
@@ -899,7 +946,7 @@ function subscriptions($memID)
 		// Never had this before, lovely.
 		else
 		{
-			$pending_details = serialize(array($new_data));
+			$pending_details = json_encode(array($new_data));
 			$smcFunc['db_insert']('',
 				'{db_prefix}log_subscribed',
 				array(

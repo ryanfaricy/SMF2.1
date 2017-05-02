@@ -8,14 +8,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Who's online, and what are they doing?
@@ -29,7 +29,7 @@ if (!defined('SMF'))
  */
 function Who()
 {
-	global $context, $scripturl, $user_info, $txt, $modSettings, $memberContext, $smcFunc;
+	global $context, $scripturl, $txt, $modSettings, $memberContext, $smcFunc;
 
 	// Permissions, permissions, permissions.
 	isAllowedTo('who_view');
@@ -98,25 +98,21 @@ function Who()
 
 	$conditions = array();
 	if (!allowedTo('moderate_forum'))
-		$conditions[] = '(IFNULL(mem.show_online, 1) = 1)';
+		$conditions[] = '(COALESCE(mem.show_online, 1) = 1)';
 
 	// Fallback to top filter?
 	if (isset($_REQUEST['submit_top']) && isset($_REQUEST['show_top']))
 		$_REQUEST['show'] = $_REQUEST['show_top'];
 	// Does the user wish to apply a filter?
 	if (isset($_REQUEST['show']) && isset($show_methods[$_REQUEST['show']]))
-	{
 		$context['show_by'] = $_SESSION['who_online_filter'] = $_REQUEST['show'];
-		$conditions[] = $show_methods[$_REQUEST['show']];
-	}
 	// Perhaps we saved a filter earlier in the session?
 	elseif (isset($_SESSION['who_online_filter']))
-	{
 		$context['show_by'] = $_SESSION['who_online_filter'];
-		$conditions[] = $show_methods[$_SESSION['who_online_filter']];
-	}
 	else
-		$context['show_by'] = $_SESSION['who_online_filter'] = 'all';
+		$context['show_by'] = 'members';
+
+	$conditions[] = $show_methods[$context['show_by']];
 
 	// Get the total amount of members online.
 	$request = $smcFunc['db_query']('', '
@@ -137,8 +133,8 @@ function Who()
 	// Look for people online, provided they don't mind if you see they are.
 	$request = $smcFunc['db_query']('', '
 		SELECT
-			lo.log_time, lo.id_member, lo.url, INET_NTOA(lo.ip) AS ip, mem.real_name,
-			lo.session, mg.online_color, IFNULL(mem.show_online, 1) AS show_online,
+			lo.log_time, lo.id_member, lo.url, lo.ip AS ip, mem.real_name,
+			lo.session, mg.online_color, COALESCE(mem.show_online, 1) AS show_online,
 			lo.id_spider
 		FROM {db_prefix}log_online AS lo
 			LEFT JOIN {db_prefix}members AS mem ON (lo.id_member = mem.id_member)
@@ -159,14 +155,14 @@ function Who()
 	$url_data = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
-		$actions = @unserialize($row['url']);
+		$actions = smf_json_decode($row['url'], true);
 		if ($actions === false)
 			continue;
 
 		// Send the information to the template.
 		$context['members'][$row['session']] = array(
 			'id' => $row['id_member'],
-			'ip' => allowedTo('moderate_forum') ? $row['ip'] : '',
+			'ip' => allowedTo('moderate_forum') ? inet_dtop($row['ip']) : '',
 			// It is *going* to be today or yesterday, so why keep that information in there?
 			'time' => strtr(timeformat($row['log_time']), array($txt['today'] => '', $txt['yesterday'] => '')),
 			'timestamp' => forum_time(true, $row['log_time']),
@@ -199,7 +195,7 @@ function Who()
 	$spiderContext = array();
 	if (!empty($modSettings['show_spider_online']) && ($modSettings['show_spider_online'] == 2 || allowedTo('admin_forum')) && !empty($modSettings['spider_name_cache']))
 	{
-		foreach (unserialize($modSettings['spider_name_cache']) as $id => $name)
+		foreach (smf_json_decode($modSettings['spider_name_cache'], true) as $id => $name)
 			$spiderContext[$id] = array(
 				'id' => 0,
 				'name' => $name,
@@ -250,7 +246,7 @@ function Who()
  * Adding actions to the Who's Online list:
  * Adding actions to this list is actually relatively easy...
  *  - for actions anyone should be able to see, just add a string named whoall_ACTION.
-*     (where ACTION is the action used in index.php.)
+ *    (where ACTION is the action used in index.php.)
  *  - for actions that have a subaction which should be represented differently, use whoall_ACTION_SUBACTION.
  *  - for actions that include a topic, and should be restricted, use whotopic_ACTION.
  *  - for actions that use a message, by msg or quote, use whopost_ACTION.
@@ -259,15 +255,13 @@ function Who()
  *    use whoallow_ACTION and add a list of possible permissions to the
  *    $allowedActions array, using ACTION as the key.
  *
- * @param mixed $urls, a single url (string) or an array of arrays, each
- * inner array being (serialized request data, id_member)
+ * @param mixed $urls  a single url (string) or an array of arrays, each inner array being (JSON-encoded request data, id_member)
  * @param string $preferred_prefix = false
- * @return array, an array of descriptions if you passed an array, otherwise
- * the string describing their current location.
+ * @return array, an array of descriptions if you passed an array, otherwise the string describing their current location.
  */
 function determineActions($urls, $preferred_prefix = false)
 {
-	global $txt, $user_info, $modSettings, $smcFunc, $context;
+	global $txt, $user_info, $modSettings, $smcFunc;
 
 	if (!allowedTo('who_view'))
 		return array();
@@ -296,6 +290,7 @@ function determineActions($urls, $preferred_prefix = false)
 		'viewErrorLog' => array('admin_forum'),
 		'viewmembers' => array('moderate_forum'),
 	);
+	call_integration_hook('who_allowed', array(&$allowedActions));
 
 	if (!is_array($urls))
 		$url_list = array(array($urls, $user_info['id']));
@@ -311,7 +306,7 @@ function determineActions($urls, $preferred_prefix = false)
 	foreach ($url_list as $k => $url)
 	{
 		// Get the request parameters..
-		$actions = @unserialize($url[0]);
+		$actions = smf_json_decode($url[0], true);
 		if ($actions === false)
 			continue;
 
@@ -354,7 +349,7 @@ function determineActions($urls, $preferred_prefix = false)
 					$actions['u'] = $url[1];
 
 				$data[$k] = $txt['who_hidden'];
-				$profile_ids[(int) $actions['u']][$k] = $actions['action'] == 'profile' ? $txt['who_viewprofile'] : $txt['who_profile'];
+				$profile_ids[(int) $actions['u']][$k] = $actions['u'] == $url[1] ? $txt['who_viewownprofile'] : $txt['who_viewprofile'];
 			}
 			elseif (($actions['action'] == 'post' || $actions['action'] == 'post2') && empty($actions['topic']) && isset($actions['board']))
 			{
@@ -423,6 +418,19 @@ function determineActions($urls, $preferred_prefix = false)
 				$data[$k] = $txt['who_unknown'];
 		}
 
+		if (isset($actions['error']))
+		{
+			if (isset($txt[$actions['error']]))
+				$error_message = str_replace('"', '&quot;', empty($actions['who_error_params']) ? $txt[$actions['error']] : vsprintf($txt[$actions['error']], $actions['who_error_params']));
+			elseif ($actions['error'] == 'guest_login')
+				$error_message = str_replace('"', '&quot;', $txt['who_guest_login']);
+			else
+				$error_message = str_replace('"', '&quot;', $actions['error']);
+
+			if (!empty($error_message))
+				$data[$k] .= ' <span class="generic_icons error" title="' . $error_message . '"></span>';
+		}
+
 		// Maybe the action is integrated into another system?
 		if (count($integrate_actions = call_integration_hook('integrate_whos_online', array($actions))) > 0)
 		{
@@ -431,6 +439,12 @@ function determineActions($urls, $preferred_prefix = false)
 				if (!empty($integrate_action))
 				{
 					$data[$k] = $integrate_action;
+					if (isset($actions['topic']) && isset($topic_ids[(int) $actions['topic']][$k]))
+						$topic_ids[(int) $actions['topic']][$k] = $integrate_action;
+					if (isset($actions['board']) && isset($board_ids[(int) $actions['board']][$k]))
+						$board_ids[(int) $actions['board']][$k] = $integrate_action;
+					if (isset($actions['u']) && isset($profile_ids[(int) $actions['u']][$k]))
+						$profile_ids[(int) $actions['u']][$k] = $integrate_action;
 					break;
 				}
 			}
@@ -472,9 +486,10 @@ function determineActions($urls, $preferred_prefix = false)
 			FROM {db_prefix}boards AS b
 			WHERE {query_see_board}
 				AND b.id_board IN ({array_int:board_list})
-			LIMIT ' . count($board_ids),
+			LIMIT {int:limit}',
 			array(
 				'board_list' => array_keys($board_ids),
+				'limit' => count($board_ids),
 			)
 		);
 		while ($row = $smcFunc['db_fetch_assoc']($result))
@@ -486,8 +501,10 @@ function determineActions($urls, $preferred_prefix = false)
 		$smcFunc['db_free_result']($result);
 	}
 
-	// Load member names for the profile.
-	if (!empty($profile_ids) && (allowedTo('profile_view_any') || allowedTo('profile_view_own')))
+	// Load member names for the profile. (is_not_guest permission for viewing their own profile)
+	$allow_view_own = allowedTo('is_not_guest');
+	$allow_view_any = allowedTo('profile_view');
+	if (!empty($profile_ids) && ($allow_view_any || $allow_view_own))
 	{
 		$result = $smcFunc['db_query']('', '
 			SELECT id_member, real_name
@@ -501,7 +518,7 @@ function determineActions($urls, $preferred_prefix = false)
 		while ($row = $smcFunc['db_fetch_assoc']($result))
 		{
 			// If they aren't allowed to view this person's profile, skip it.
-			if (!allowedTo('profile_view_any') && $user_info['id'] != $row['id_member'])
+			if (!$allow_view_any && ($user_info['id'] != $row['id_member']))
 				continue;
 
 			// Set their action on each - session/text to sprintf.
@@ -510,6 +527,8 @@ function determineActions($urls, $preferred_prefix = false)
 		}
 		$smcFunc['db_free_result']($result);
 	}
+
+	call_integration_hook('whos_online_after', array(&$urls, &$data));
 
 	if (!is_array($urls))
 		return isset($data[0]) ? $data[0] : false;
@@ -524,10 +543,19 @@ function determineActions($urls, $preferred_prefix = false)
  */
 function Credits($in_admin = false)
 {
-	global $context, $smcFunc, $modSettings, $forum_copyright, $forum_version, $boardurl, $txt, $user_info;
+	global $context, $smcFunc, $forum_copyright, $forum_version, $software_year, $txt, $user_info;
 
 	// Don't blink. Don't even blink. Blink and you're dead.
 	loadLanguage('Who');
+
+	if ($in_admin)
+	{
+		$context[$context['admin_menu_name']]['tab_data'] = array(
+			'title' => $txt['support_credits_title'],
+			'help' => '',
+			'description' => '',
+		);
+	}
 
 	$context['credits'] = array(
 		array(
@@ -535,31 +563,40 @@ function Credits($in_admin = false)
 			'title' => $txt['credits_team'],
 			'groups' => array(
 				array(
-					'title' => $txt['credits_groups_ps'],
+					'title' => $txt['credits_groups_pm'],
 					'members' => array(
-						'Michael &quot;Oldiesmann&quot; Eshom',
+						'Jessica &quot;Suki&quot; Gonz&aacute;lez',
+						// Former Project Managers
+						'Kindred',
 					),
 				),
 				array(
 					'title' => $txt['credits_groups_dev'],
 					'members' => array(
 						// Lead Developer
-						// 'Steven &quot;Fustrate&quot; Hoffman',
+						'Michael &quot;Oldiesmann&quot; Eshom',
 						// Developers
-						'Brad &quot;IchBin&trade;&quot; Grow',
-						'emanuele',
-						'Norv',
-						// 'Spuds', // Doesn't want to be listed here
+						'Colin Schoen',
+						'John &quot;live627&quot; Rayes',
+
 						// Former Developers
 						'Aaron van Geffen',
 						'Antechinus',
 						'Bjoern &quot;Bloc&quot; Kristiansen',
+						'Brad &quot;IchBin&trade;&quot; Grow',
+						'emanuele',
 						'Hendrik Jan &quot;Compuart&quot; Visser',
 						'Juan &quot;JayBachatero&quot; Hernandez',
+						'Shitiz &quot;Dragooon&quot; Garg',
 						'Karl &quot;RegularExpression&quot; Benson',
+						'Matthew &quot;Labradoodle-360&quot; Kerle',
 						$user_info['is_admin'] ? 'Matt &quot;Grudge&quot; Wolf': 'Grudge',
 						'Michael &quot;Thantos&quot; Miller',
+						'Norv',
+						'Peter "Arantor" Spicer',
 						'Selman &quot;[SiNaN]&quot; Eser',
+						// 'Spuds', // Doesn't want to be listed here
+						// 'Steven &quot;Fustrate&quot; Hoffman',
 						'Theodore &quot;Orstio&quot; Hildebrandt',
 						'Thorsten &quot;TE&quot; Eurich',
 						'winrules',
@@ -569,24 +606,31 @@ function Credits($in_admin = false)
 					'title' => $txt['credits_groups_support'],
 					'members' => array(
 						// Lead Support Specialist
-						'Kat',
+						'Michele &quot;Illori&quot; Davis',
 						// Support Specialists
-						'Aleksi &quot;Lex&quot; Kilpinen',
+						'Adam Tallon',
 						'Bigguy',
+						'Bruno "margarett" Alves',
+						'br360',
+						'Krash',
+						// Former Support Specialists
+						'Aleksi &quot;Lex&quot; Kilpinen',
+						'CapadY',
+						'ChalkCat',
 						'Chas Large',
 						'Duncan85',
-						'JimM',
-						'Mashby',
-						'Old Fossil',
-						'Yoshi',
-						'ziycon',
-						// Former Support Specialists
-						'CapadY',
 						'gbsothere',
+						'JimM',
+						'Justyne',
+						'Kat',
 						'Kevin &quot;greyknight17&quot; Hou',
-						'Michele &quot;Illori&quot; Davis',
+						'Mashby',
+						'Michael Colin Blaber',
+						'Old Fossil',
 						'S-Ace',
+						'Storman&trade;',
 						'Wade &quot;s&eta;&sigma;&omega;&quot; Poulsen',
+						'Yoshi',
 						'xenovanis',
 					),
 				),
@@ -594,23 +638,30 @@ function Credits($in_admin = false)
 					'title' => $txt['credits_groups_customize'],
 					'members' => array(
 						// Lead Customizer
-						'Gary M. Gadsdon',
+						'Russell "NEND" Najar',
 						// Customizers
-						'Jessica Gonz&aacute;lez',
-						'Kays',
-						'Matthew &quot;Labradoodle-360&quot; Kerle',
-						'Ricky.',
+						'Gary M. Gadsdon',
+						'Jason "JBlaze" Clemons',
+						'SA&#8482;',
 						// Former Customizers
 						'Brannon &quot;B&quot; Hall',
+						'Diego Andrés',
+						'Jack "akabugeyes" Thorsen',
 						'Joey &quot;Tyrsson&quot; Smith',
+						'Kays',
+						'Ricky.',
 					),
 				),
 				array(
 					'title' => $txt['credits_groups_docs'],
 					'members' => array(
 						// Doc Coordinator
-						'AngelinaBelle',
+						'Irisado',
 						// Doc Writers
+
+						// Former Doc Writers
+						'AngelinaBelle',
+						'Chainy',
 						'Graeme Spence',
 						'Joshua &quot;groundup&quot; Dickerson',
 					),
@@ -622,6 +673,8 @@ function Credits($in_admin = false)
 						'Nikola &quot;Dzonny&quot; Novakovi&cacute;',
 						// Localizers
 						'Dr. Deejay',
+                        			'd3vcho',
+						// Former Localizers
 						'Relyana',
 					),
 				),
@@ -629,13 +682,13 @@ function Credits($in_admin = false)
 					'title' => $txt['credits_groups_marketing'],
 					'members' => array(
 						// Marketing Coordinator
-						'Ralph &quot;[n3rve]&quot; Otowo',
+						'Mert &quot;Antes&quot; Al&#305;nbay ',
 						// Marketing
-						'Bryan &quot;Runic&quot; Deakin',
-						'Adish &quot;(F.L.A.M.E.R)&quot; Patel',
 						// Former Marketing
-						'Kindred',
+						'Adish &quot;(F.L.A.M.E.R)&quot; Patel',
+						'Bryan &quot;Runic&quot; Deakin',
 						'Marcus &quot;c&sigma;&sigma;&#1082;&iota;&#1108; &#1084;&sigma;&eta;&#1109;&#1090;&#1108;&#1103;&quot; Forsberg',
+						'Ralph &quot;[n3rve]&quot; Otowo',
 					),
 				),
 				array(
@@ -648,7 +701,8 @@ function Credits($in_admin = false)
 					'title' => $txt['credits_groups_servers'],
 					'members' => array(
 						'Derek Schwab',
-						'Liroy &quot;CoreISP&quot; van Hoewijk',
+						'Michael Johnson',
+						'Liroy van Hoewijk (CoreISP)',
 					),
 				),
 			),
@@ -674,9 +728,12 @@ function Credits($in_admin = false)
 			array(
 				'title' => $txt['credits_groups_consultants'],
 				'members' => array(
+					'albertlast',
 					'Brett Flannigan',
+					'Jon "Sesquipedalian" Stovell',
 					'Mark Rose',
 					'Ren&eacute;-Gilles &quot;Nao &#23578;&quot; Deberdt',
+					'tinoest',
 				),
 			),
 			array(
@@ -712,14 +769,25 @@ function Credits($in_admin = false)
 	$context['credits_software_graphics'] = array(
 		'graphics' => array(
 			'<a href="http://p.yusukekamiyamane.com/">Fugue Icons</a> | &copy; 2012 Yusuke Kamiyamane | These icons are licensed under a Creative Commons Attribution 3.0 License',
-			'<a href="http://www.oxygen-icons.org/">Oxygen Icons</a> | These icons are licensed under <a href="http://www.gnu.org/licenses/lgpl-3.0.txt">GNU LGPL 3</a>',
+			'<a href="https://techbase.kde.org/Projects/Oxygen/Licensing#Use_on_Websites">Oxygen Icons</a> | These icons are licensed under <a href="http://www.gnu.org/copyleft/lesser.html">GNU LGPLv3</a>',
 		),
 		'software' => array(
 			'<a href="http://jquery.org/">JQuery</a> | &copy; John Resig | Licensed under <a href="http://github.com/jquery/jquery/blob/master/MIT-LICENSE.txt">The MIT License (MIT)</a>',
 			'<a href="http://cherne.net/brian/resources/jquery.hoverIntent.html">hoverIntent</a> | &copy; Brian Cherne | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
-			'<a href="http://users.tpg.com.au/j_birch/plugins/superfish/">Superfish</a> | &copy; Joel Birch | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
 			'<a href="http://www.sceditor.com/">SCEditor</a> | &copy; Sam Clarke | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
 			'<a href="http://wayfarerweb.com/jquery/plugins/animadrag/">animaDrag</a> | &copy; Abel Mohler | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
+			'<a href="https://github.com/mzubala/jquery-custom-scrollbar">jQuery Custom Scrollbar</a> | &copy; Maciej Zubala | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
+			'<a href="http://slippry.com/">jQuery Responsive Slider</a> | &copy; booncon ROCKETS | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
+			'<a href="https://github.com/ichord/At.js">At.js</a> | &copy; chord.luo@gmail.com | Licensed under <a href="https://github.com/ichord/At.js/blob/master/LICENSE-MIT">The MIT License (MIT)</a>',
+			'<a href="https://github.com/ttsvetko/HTML5-Desktop-Notifications">HTML5 Desktop Notifications</a> | &copy; Tsvetan Tsvetkov | Licensed under <a href="https://github.com/ttsvetko/HTML5-Desktop-Notifications/blob/master/License.txt">The Apache License Version 2.0</a>',
+			'<a href="https://github.com/enygma/gauth">GAuth Code Generator/Validator</a> | &copy; Chris Cornutt | Licensed under <a href="https://github.com/enygma/gauth/blob/master/LICENSE">The MIT License (MIT)</a>',
+			'<a href="https://github.com/enyo/dropzone">Dropzone.js</a> | &copy; Matias Meno | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
+			'<a href="https://github.com/matthiasmullie/minify">Minify</a> | &copy; Matthias Mullie | Licensed under <a href="http://en.wikipedia.org/wiki/MIT_License">The MIT License (MIT)</a>',
+		),
+		'fonts' => array(
+			'<a href="http://openfontlibrary.org/en/font/anonymous-pro"> Anonymous Pro</a> | &copy; 2009 | This font is licensed under the SIL Open Font License, Version 1.1',
+			'<a href="http://openfontlibrary.org/en/font/consolamono"> ConsolaMono</a> | &copy; 2012 | This font is licensed under the SIL Open Font License, Version 1.1',
+			'<a href="http://openfontlibrary.org/en/font/phennig"> Phennig</a> | &copy; 2009-2012 | This font is licensed under the SIL Open Font License, Version 1.1',
 		),
 	);
 
@@ -743,10 +811,10 @@ function Credits($in_admin = false)
 
 		while ($row = $smcFunc['db_fetch_assoc']($request))
 		{
-			$credit_info = unserialize($row['credits']);
+			$credit_info = smf_json_decode($row['credits'], true);
 
 			$copyright = empty($credit_info['copyright']) ? '' : $txt['credits_copyright'] . ' &copy; ' . $smcFunc['htmlspecialchars']($credit_info['copyright']);
-			$license = empty($credit_info['license']) ? '' : $txt['credits_license'] . ': ' . $smcFunc['htmlspecialchars']($credit_info['license']);
+			$license = empty($credit_info['license']) ? '' : $txt['credits_license'] . ': ' . (!empty($credit_info['licenseurl']) ? '<a href="'. $smcFunc['htmlspecialchars']($credit_info['licenseurl']) .'">'. $smcFunc['htmlspecialchars']($credit_info['license']) .'</a>' : $smcFunc['htmlspecialchars']($credit_info['license']));
 			$version = $txt['credits_version'] . ' ' . $row['version'];
 			$title = (empty($credit_info['title']) ? $row['name'] : $smcFunc['htmlspecialchars']($credit_info['title'])) . ': ' . $version;
 
@@ -759,7 +827,7 @@ function Credits($in_admin = false)
 	$context['credits_modifications'] = $mods;
 
 	$context['copyrights'] = array(
-		'smf' => sprintf($forum_copyright, $forum_version),
+		'smf' => sprintf($forum_copyright, $forum_version, $software_year),
 		/* Modification Authors:  You may add a copyright statement to this array for your mods.
 			Copyright statements should be in the form of a value only without a array key.  I.E.:
 				'Some Mod by Thantos &copy; 2010',

@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1; ManageCalendar
+// Version: 2.1 Beta 3; ManageCalendar
 
 $txt['calendar_desc'] = 'From here you can modify all aspects of the calendar.';
 
@@ -25,9 +25,38 @@ $txt['setting_cal_defaultboard'] = 'Default board to post events in';
 $txt['setting_cal_allow_unlinked'] = 'Allow events not linked to posts';
 $txt['setting_cal_minyear'] = 'Minimum year';
 $txt['setting_cal_maxyear'] = 'Maximum year';
-$txt['setting_cal_allowspan'] = 'Allow events to span multiple days';
 $txt['setting_cal_maxspan'] = 'Max number of days an event can span';
 $txt['setting_cal_showInTopic'] = 'Show linked events in topic display';
+$txt['setting_calendar_default_view'] = 'Default view on calendar page';
+$txt['setting_cal_view_list'] = 'List view';
+$txt['setting_cal_view_month'] = 'Month view';
+$txt['setting_cal_view_week'] = 'Week view';
+
+$txt['setting_cal_display_type'] = 'Cell Display Type';
+$txt['setting_cal_display_comfortable'] = 'Comfortable';
+$txt['setting_cal_display_compact'] = 'Compact';
+
+$txt['setting_cal_disable_prev_next'] = 'Disable Three Month Blocks';
+
+$txt['setting_cal_highlight_events'] = 'Highlight Events';
+$txt['setting_cal_highlight_holidays'] = 'Highlight Holidays';
+$txt['setting_cal_highlight_birthdays'] = 'Highlight Birthdays';
+
+$txt['setting_cal_highlight_none'] = 'Nowhere';
+$txt['setting_cal_highlight_mini'] = 'Mini Calendars Only';
+$txt['setting_cal_highlight_main'] = 'Main Calendar Only';
+$txt['setting_cal_highlight_both'] = 'Mini &amp; Main Calendars';
+
+$txt['setting_cal_week_links'] = 'Show Week Links';
+$txt['setting_cal_week_links_none'] = 'Nowhere';
+$txt['setting_cal_week_links_mini'] = 'Mini Calendars Only';
+$txt['setting_cal_week_links_main'] = 'Main Calendar Only';
+$txt['setting_cal_week_links_both'] = 'Mini &amp; Main Calendars';
+$txt['setting_cal_prev_next_links'] = 'Show <em>Previous / Next</em> Month Links';
+
+// The name of this setting is kind of misleading...we can't shorten actual months unfortunately!
+$txt['setting_cal_short_months'] = 'Short Month Titles';
+$txt['setting_cal_short_days'] = 'Short Day Titles';
 
 // Adding/Editing/Viewing Holidays
 $txt['manage_holidays_desc'] = 'From here you can add and remove holidays from your forum calendar.';

@@ -7,14 +7,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Entry point function, permission checks, admin bars, etc.
@@ -32,7 +32,7 @@ function Groups()
 		'requests' => array('GroupRequests', 'group_requests'),
 	);
 
-	// Default to sub action 'index' or 'settings' depending on permissions.
+	// Default to sub action 'index'.
 	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : 'index';
 
 	// Get the template stuff up and running.
@@ -58,8 +58,11 @@ function Groups()
 		);
 	}
 
+	// CRUD $subActions as needed.
+	call_integration_hook('integrate_manage_groups', array(&$subActions));
+
 	// Call the actual function.
-	$subActions[$_REQUEST['sa']][0]();
+	call_helper($subActions[$_REQUEST['sa']][0]);
 }
 
 /**
@@ -67,7 +70,7 @@ function Groups()
  */
 function GroupList()
 {
-	global $txt, $context, $sourcedir;
+	global $txt, $context, $sourcedir, $scripturl;
 
 	$context['page_title'] = $txt['viewing_groups'];
 
@@ -78,8 +81,14 @@ function GroupList()
 	$listOptions = array(
 		'id' => 'group_lists',
 		'title' => $context['page_title'],
+		'base_href' => $scripturl . '?action=moderate;area=viewgroups;sa=view',
+		'default_sort_col' => 'group',
 		'get_items' => array(
-			'function' => 'list_getGroups',
+			'file' => $sourcedir . '/Subs-Membergroups.php',
+			'function' => 'list_getMembergroups',
+			'params' => array(
+				'regular',
+			),
 		),
 		'columns' => array(
 			'group' => array(
@@ -87,17 +96,37 @@ function GroupList()
 					'value' => $txt['name'],
 				),
 				'data' => array(
-					'function' => create_function('$group', '
-						global $scripturl, $context;
+					'function' => function($rowData) use ($scripturl)
+					{
+						// Since the moderator group has no explicit members, no link is needed.
+						if ($rowData['id_group'] == 3)
+							$group_name = $rowData['group_name'];
+						else
+						{
+							$color_style = empty($rowData['online_color']) ? '' : sprintf(' style="color: %1$s;"', $rowData['online_color']);
 
-						$output = \'<a href="\' . $scripturl . \'?action=\' . $context[\'current_action\'] . (isset($context[\'admin_area\']) ? \';area=\' . $context[\'admin_area\'] : \'\') . \';sa=members;group=\' . $group[\'id\'] . \'" \' . ($group[\'color\'] ? \'style="color: \' . $group[\'color\'] . \';"\' : \'\') . \'>\' . $group[\'name\'] . \'</a>\';
+							if (allowedTo('manage_membergroups'))
+							{
+								$group_name = sprintf('<a href="%1$s?action=admin;area=membergroups;sa=members;group=%2$d"%3$s>%4$s</a>', $scripturl, $rowData['id_group'], $color_style, $rowData['group_name']);
+							}
+							else
+							{
+								$group_name = sprintf('<a href="%1$s?action=groups;sa=members;group=%2$d"%3$s>%4$s</a>', $scripturl, $rowData['id_group'], $color_style, $rowData['group_name']);
+							}
+						}
 
-						if ($group[\'desc\'])
-							$output .= \'<div class="smalltext">\' . $group[\'desc\'] . \'</div>\';
+						// Add a help option for moderator and administrator.
+						if ($rowData['id_group'] == 1)
+							$group_name .= sprintf(' (<a href="%1$s?action=helpadmin;help=membergroup_administrator" onclick="return reqOverlayDiv(this.href);">?</a>)', $scripturl);
+						elseif ($rowData['id_group'] == 3)
+							$group_name .= sprintf(' (<a href="%1$s?action=helpadmin;help=membergroup_moderator" onclick="return reqOverlayDiv(this.href);">?</a>)', $scripturl);
 
-						return $output;
-					'),
-					'style' => 'width: 50%;',
+						return $group_name;
+					},
+				),
+				'sort' => array(
+					'default' => 'CASE WHEN mg.id_group < 4 THEN mg.id_group ELSE 4 END, mg.group_name',
+					'reverse' => 'CASE WHEN mg.id_group < 4 THEN mg.id_group ELSE 4 END, mg.group_name DESC',
 				),
 			),
 			'icons' => array(
@@ -107,17 +136,20 @@ function GroupList()
 				'data' => array(
 					'db' => 'icons',
 				),
+				'sort' => array(
+					'default' => 'mg.icons',
+					'reverse' => 'mg.icons DESC',
+				)
 			),
 			'moderators' => array(
 				'header' => array(
 					'value' => $txt['moderators'],
 				),
 				'data' => array(
-					'function' => create_function('$group', '
-						global $txt;
-
-						return empty($group[\'moderators\']) ? \'<em>\' . $txt[\'membergroups_new_copy_none\'] . \'</em>\' : implode(\', \', $group[\'moderators\']);
-					'),
+					'function' => function($group) use ($txt)
+					{
+						return empty($group['moderators']) ? '<em>' . $txt['membergroups_new_copy_none'] . '</em>' : implode(', ', $group['moderators']);
+					},
 				),
 			),
 			'members' => array(
@@ -125,8 +157,16 @@ function GroupList()
 					'value' => $txt['membergroups_members_top'],
 				),
 				'data' => array(
-					'comma_format' => true,
-					'db' => 'num_members',
+					'function' => function($rowData) use ($txt)
+					{
+						// No explicit members for the moderator group.
+						return $rowData['id_group'] == 3 ? $txt['membergroups_guests_na'] : comma_format($rowData['num_members']);
+					},
+					'class' => 'centercol',
+				),
+				'sort' => array(
+					'default' => 'CASE WHEN mg.id_group < 4 THEN mg.id_group ELSE 4 END, 1',
+					'reverse' => 'CASE WHEN mg.id_group < 4 THEN mg.id_group ELSE 4 END, 1 DESC',
 				),
 			),
 		),
@@ -137,147 +177,6 @@ function GroupList()
 
 	$context['sub_template'] = 'show_list';
 	$context['default_list'] = 'group_lists';
-}
-
-/**
- * Get the group information for the list.
- * @param int $start
- * @param int $items_per_page
- * @param int $sort
- */
-function list_getGroups($start, $items_per_page, $sort)
-{
-	global $smcFunc, $txt, $scripturl, $user_info, $settings, $context;
-
-	// Yep, find the groups...
-	$request = $smcFunc['db_query']('', '
-		SELECT mg.id_group, mg.group_name, mg.description, mg.group_type, mg.online_color, mg.hidden,
-			mg.icons, IFNULL(gm.id_member, 0) AS can_moderate
-		FROM {db_prefix}membergroups AS mg
-			LEFT JOIN {db_prefix}group_moderators AS gm ON (gm.id_group = mg.id_group AND gm.id_member = {int:current_member})
-		WHERE mg.min_posts = {int:min_posts}
-			AND mg.id_group != {int:mod_group}' . (allowedTo('admin_forum') ? '' : '
-			AND mg.group_type != {int:is_protected}') . '
-		ORDER BY group_name',
-		array(
-			'current_member' => $user_info['id'],
-			'min_posts' => -1,
-			'mod_group' => 3,
-			'is_protected' => 1,
-		)
-	);
-	// Start collecting the data.
-	$groups = array();
-	$group_ids = array();
-	$context['can_moderate'] = allowedTo('manage_membergroups');
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-	{
-		// We only list the groups they can see.
-		if ($row['hidden'] && !$row['can_moderate'] && !allowedTo('manage_membergroups'))
-			continue;
-
-		$row['icons'] = explode('#', $row['icons']);
-
-		$groups[$row['id_group']] = array(
-			'id' => $row['id_group'],
-			'name' => $row['group_name'],
-			'desc' => $row['description'],
-			'color' => $row['online_color'],
-			'type' => $row['group_type'],
-			'num_members' => 0,
-			'moderators' => array(),
-			'icons' => !empty($row['icons'][0]) && !empty($row['icons'][1]) ? str_repeat('<img src="' . $settings['images_url'] . '/' . $row['icons'][1] . '" alt="*" />', $row['icons'][0]) : '',
-		);
-
-		$context['can_moderate'] |= $row['can_moderate'];
-		$group_ids[] = $row['id_group'];
-	}
-	$smcFunc['db_free_result']($request);
-
-	// Count up the members separately...
-	if (!empty($group_ids))
-	{
-		$query = $smcFunc['db_query']('', '
-			SELECT id_group, COUNT(*) AS num_members
-			FROM {db_prefix}members
-			WHERE id_group IN ({array_int:group_list})
-			GROUP BY id_group',
-			array(
-				'group_list' => $group_ids,
-			)
-		);
-		while ($row = $smcFunc['db_fetch_assoc']($query))
-			$groups[$row['id_group']]['num_members'] += $row['num_members'];
-		$smcFunc['db_free_result']($query);
-
-		// Only do additional groups if we can moderate...
-		if ($context['can_moderate'])
-		{
-			$query = $smcFunc['db_query']('', '
-				SELECT mg.id_group, COUNT(*) AS num_members
-				FROM {db_prefix}membergroups AS mg
-					INNER JOIN {db_prefix}members AS mem ON (mem.additional_groups != {string:blank_screen}
-						AND mem.id_group != mg.id_group
-						AND FIND_IN_SET(mg.id_group, mem.additional_groups) != 0)
-				WHERE mg.id_group IN ({array_int:group_list})
-				GROUP BY mg.id_group',
-				array(
-					'group_list' => $group_ids,
-					'blank_screen' => '',
-				)
-			);
-			while ($row = $smcFunc['db_fetch_assoc']($query))
-				$groups[$row['id_group']]['num_members'] += $row['num_members'];
-			$smcFunc['db_free_result']($query);
-		}
-	}
-
-	// Get any group moderators.
-	// Count up the members separately...
-	if (!empty($group_ids))
-	{
-		$query = $smcFunc['db_query']('', '
-			SELECT mods.id_group, mods.id_member, mem.member_name, mem.real_name
-			FROM {db_prefix}group_moderators AS mods
-				INNER JOIN {db_prefix}members AS mem ON (mem.id_member = mods.id_member)
-			WHERE mods.id_group IN ({array_int:group_list})',
-			array(
-				'group_list' => $group_ids,
-			)
-		);
-		while ($row = $smcFunc['db_fetch_assoc']($query))
-			$groups[$row['id_group']]['moderators'][] = '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['real_name'] . '</a>';
-		$smcFunc['db_free_result']($query);
-	}
-
-	return $groups;
-}
-
-/**
- * How many groups are there that are visible?
- *
- * @return int, the groups count.
- */
-function list_getGroupCount()
-{
-	global $smcFunc;
-
-	$request = $smcFunc['db_query']('', '
-		SELECT COUNT(id_group) AS group_count
-		FROM {db_prefix}membergroups
-		WHERE mg.min_posts = {int:min_posts}
-			AND mg.id_group != {int:mod_group}' . (allowedTo('admin_forum') ? '' : '
-			AND mg.group_type != {int:is_protected}'),
-		array(
-			'min_posts' => -1,
-			'mod_group' => 3,
-			'is_protected' => 1,
-		)
-	);
-	list ($group_count) = $smcFunc['db_fetch_row']($request);
-	$smcFunc['db_free_result']($request);
-
-	return $group_count;
 }
 
 /**
@@ -322,14 +221,14 @@ function MembergroupMembers()
 
 	// Fix the membergroup icons.
 	$context['group']['icons'] = explode('#', $context['group']['icons']);
-	$context['group']['icons'] = !empty($context['group']['icons'][0]) && !empty($context['group']['icons'][1]) ? str_repeat('<img src="' . $settings['images_url'] . '/' . $context['group']['icons'][1] . '" alt="*" />', $context['group']['icons'][0]) : '';
+	$context['group']['icons'] = !empty($context['group']['icons'][0]) && !empty($context['group']['icons'][1]) ? str_repeat('<img src="' . $settings['images_url'] . '/membericons/' . $context['group']['icons'][1] . '" alt="*">', $context['group']['icons'][0]) : '';
 	$context['group']['can_moderate'] = allowedTo('manage_membergroups') && (allowedTo('admin_forum') || $context['group']['group_type'] != 1);
 
 	$context['linktree'][] = array(
 		'url' => $scripturl . '?action=groups;sa=members;group=' . $context['group']['id'],
 		'name' => $context['group']['name'],
 	);
-	$context['can_send_email'] = allowedTo('send_email_to_members');
+	$context['can_send_email'] = allowedTo('moderate_forum');
 
 	// Load all the group moderators, for fun.
 	$request = $smcFunc['db_query']('', '
@@ -451,7 +350,7 @@ function MembergroupMembers()
 	// Sort out the sorting!
 	$sort_methods = array(
 		'name' => 'real_name',
-		'email' => allowedTo('moderate_forum') ? 'email_address' : 'hide_email ' . (isset($_REQUEST['desc']) ? 'DESC' : 'ASC') . ', email_address',
+		'email' => 'email_address',
 		'active' => 'last_login',
 		'registered' => 'date_registered',
 		'posts' => 'posts',
@@ -499,18 +398,21 @@ function MembergroupMembers()
 	// Load up all members of this group.
 	$request = $smcFunc['db_query']('', '
 		SELECT id_member, member_name, real_name, email_address, member_ip, date_registered, last_login,
-			hide_email, posts, is_activated, real_name
+			posts, is_activated, real_name
 		FROM {db_prefix}members
 		WHERE ' . $where . '
 		ORDER BY ' . $querySort . ' ' . ($context['sort_direction'] == 'down' ? 'DESC' : 'ASC') . '
-		LIMIT ' . $context['start'] . ', ' . $modSettings['defaultMaxMembers'],
+		LIMIT {int:start}, {int:max}',
 		array(
 			'group' => $_REQUEST['group'],
+			'start' => $context['start'],
+			'max' => $modSettings['defaultMaxMembers'],
 		)
 	);
 	$context['members'] = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
+		$row['member_ip'] = inet_dtop($row['member_ip']);
 		$last_online = empty($row['last_login']) ? $txt['never'] : timeformat($row['last_login']);
 
 		// Italicize the online note if they aren't activated.
@@ -521,7 +423,6 @@ function MembergroupMembers()
 			'id' => $row['id_member'],
 			'name' => '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['real_name'] . '</a>',
 			'email' => $row['email_address'],
-			'show_email' => showEmailAddress(!empty($row['hide_email']), $row['id_member']),
 			'ip' => '<a href="' . $scripturl . '?action=trackip;searchip=' . $row['member_ip'] . '">' . $row['member_ip'] . '</a>',
 			'registered' => timeformat($row['date_registered']),
 			'last_online' => $last_online,
@@ -535,6 +436,9 @@ function MembergroupMembers()
 	$context['sub_template'] = 'group_members';
 	$context['page_title'] = $txt['membergroups_members_title'] . ': ' . $context['group']['name'];
 	createToken('mod-mgm');
+
+	if ($context['group']['assignable'])
+		loadJavaScriptFile('suggest.js', array('defer' => false), 'smf_suggest');
 }
 
 /**
@@ -542,7 +446,7 @@ function MembergroupMembers()
  */
 function GroupRequests()
 {
-	global $txt, $context, $scripturl, $user_info, $sourcedir, $smcFunc, $modSettings, $language;
+	global $txt, $context, $scripturl, $user_info, $sourcedir, $smcFunc, $modSettings;
 
 	// Set up the template stuff...
 	$context['page_title'] = $txt['mc_group_requests'];
@@ -553,18 +457,28 @@ function GroupRequests()
 		isAllowedTo('manage_membergroups');
 
 	// Normally, we act normally...
-	$where = $user_info['mod_cache']['gq'] == '1=1' || $user_info['mod_cache']['gq'] == '0=1' ? $user_info['mod_cache']['gq'] : 'lgr.' . $user_info['mod_cache']['gq'];
-	$where_parameters = array();
+	$where = ($user_info['mod_cache']['gq'] == '1=1' || $user_info['mod_cache']['gq'] == '0=1' ? $user_info['mod_cache']['gq'] : 'lgr.' . $user_info['mod_cache']['gq']);
+
+	if (isset($_GET['closed']))
+		$where .= ' AND lgr.status != {int:status_open}';
+	else
+		$where .= ' AND lgr.status = {int:status_open}';
+
+	$where_parameters = array(
+		'status_open' => 0,
+	);
 
 	// We've submitted?
 	if (isset($_POST[$context['session_var']]) && !empty($_POST['groupr']) && !empty($_POST['req_action']))
 	{
-		checkSession('post');
+		checkSession();
 		validateToken('mod-gr');
 
 		// Clean the values.
 		foreach ($_POST['groupr'] as $k => $request)
 			$_POST['groupr'][$k] = (int) $request;
+
+		$log_changes = array();
 
 		// If we are giving a reason (And why shouldn't we?), then we don't actually do much.
 		if ($_POST['req_action'] == 'reason')
@@ -575,7 +489,10 @@ function GroupRequests()
 			$where .= ' AND lgr.id_request IN ({array_int:request_ids})';
 			$where_parameters['request_ids'] = $_POST['groupr'];
 
-			$context['group_requests'] = list_getGroupRequests(0, $modSettings['defaultMaxMessages'], 'lgr.id_request', $where, $where_parameters);
+			$context['group_requests'] = list_getGroupRequests(0, $modSettings['defaultMaxListItems'], 'lgr.id_request', $where, $where_parameters);
+
+			// Need to make another token for this.
+			createToken('mod-gr');
 
 			// Let obExit etc sort things out.
 			obExit();
@@ -583,148 +500,56 @@ function GroupRequests()
 		// Otherwise we do something!
 		else
 		{
-			// Get the details of all the members concerned...
 			$request = $smcFunc['db_query']('', '
-				SELECT lgr.id_request, lgr.id_member, lgr.id_group, mem.email_address, mem.id_group AS primary_group,
-					mem.additional_groups AS additional_groups, mem.lngfile, mem.member_name, mem.notify_types,
-					mg.hidden, mg.group_name
+				SELECT lgr.id_request
 				FROM {db_prefix}log_group_requests AS lgr
-					INNER JOIN {db_prefix}members AS mem ON (mem.id_member = lgr.id_member)
-					INNER JOIN {db_prefix}membergroups AS mg ON (mg.id_group = lgr.id_group)
 				WHERE ' . $where . '
-					AND lgr.id_request IN ({array_int:request_list})
-				ORDER BY mem.lngfile',
+					AND lgr.id_request IN ({array_int:request_list})',
 				array(
 					'request_list' => $_POST['groupr'],
+					'status_open' => 0,
 				)
 			);
-			$email_details = array();
-			$group_changes = array();
+			$request_list = array();
 			while ($row = $smcFunc['db_fetch_assoc']($request))
 			{
-				$row['lngfile'] = empty($row['lngfile']) || empty($modSettings['userLanguage']) ? $language : $row['lngfile'];
-
-				// If we are approving work out what their new group is.
-				if ($_POST['req_action'] == 'approve')
-				{
-					// For people with more than one request at once.
-					if (isset($group_changes[$row['id_member']]))
-					{
-						$row['additional_groups'] = $group_changes[$row['id_member']]['add'];
-						$row['primary_group'] = $group_changes[$row['id_member']]['primary'];
-					}
-					else
-						$row['additional_groups'] = explode(',', $row['additional_groups']);
-
-					// Don't have it already?
-					if ($row['primary_group'] == $row['id_group'] || in_array($row['id_group'], $row['additional_groups']))
-						continue;
-
-					// Should it become their primary?
-					if ($row['primary_group'] == 0 && $row['hidden'] == 0)
-						$row['primary_group'] = $row['id_group'];
-					else
-						$row['additional_groups'][] = $row['id_group'];
-
-					// Add them to the group master list.
-					$group_changes[$row['id_member']] = array(
-						'primary' => $row['primary_group'],
-						'add' => $row['additional_groups'],
+				if (!isset($log_changes[$row['id_request']]))
+					$log_changes[$row['id_request']] = array(
+						'id_request' => $row['id_request'],
+						'status' => $_POST['req_action'] == 'approve' ? 1 : 2, // 1 = approved, 2 = rejected
+						'id_member_acted' => $user_info['id'],
+						'member_name_acted' => $user_info['name'],
+						'time_acted' => time(),
+						'act_reason' => $_POST['req_action'] != 'approve' && !empty($_POST['groupreason']) && !empty($_POST['groupreason'][$row['id_request']]) ? $smcFunc['htmlspecialchars']($_POST['groupreason'][$row['id_request']], ENT_QUOTES) : '',
 					);
-				}
-
-				// Add required information to email them.
-				if ($row['notify_types'] != 4)
-					$email_details[] = array(
-						'rid' => $row['id_request'],
-						'member_id' => $row['id_member'],
-						'member_name' => $row['member_name'],
-						'group_id' => $row['id_group'],
-						'group_name' => $row['group_name'],
-						'email' => $row['email_address'],
-						'language' => $row['lngfile'],
-					);
+				$request_list[] = $row['id_request'];
 			}
 			$smcFunc['db_free_result']($request);
 
-			// Remove the evidence...
-			$smcFunc['db_query']('', '
-				DELETE FROM {db_prefix}log_group_requests
-				WHERE id_request IN ({array_int:request_list})',
-				array(
-					'request_list' => $_POST['groupr'],
-				)
+			// Add a background task to handle notifying people of this request
+			$data = json_encode(array('member_id' => $user_info['id'], 'member_ip' => $user_info['ip'], 'request_list' => $request_list, 'status' => $_POST['req_action'], 'reason' => isset($_POST['groupreason']) ? $_POST['groupreason'] : '', 'time' => time()));
+			$smcFunc['db_insert']('insert', '{db_prefix}background_tasks',
+				array('task_file' => 'string-255', 'task_class' => 'string-255', 'task_data' => 'string', 'claimed_time' => 'int'),
+				array('$sourcedir/tasks/GroupAct-Notify.php', 'GroupAct_Notify_Background', $data, 0), array()
 			);
 
-			// Ensure everyone who is online gets their changes right away.
-			updateSettings(array('settings_updated' => time()));
-
-			if (!empty($email_details))
+			// Some changes to log?
+			if (!empty($log_changes))
 			{
-				require_once($sourcedir . '/Subs-Post.php');
-
-				// They are being approved?
-				if ($_POST['req_action'] == 'approve')
+				foreach ($log_changes as $id_request => $details)
 				{
-					// Make the group changes.
-					foreach ($group_changes as $id => $groups)
-					{
-						// Sanity check!
-						foreach ($groups['add'] as $key => $value)
-							if ($value == 0 || trim($value) == '')
-								unset($groups['add'][$key]);
-
-						$smcFunc['db_query']('', '
-							UPDATE {db_prefix}members
-							SET id_group = {int:primary_group}, additional_groups = {string:additional_groups}
-							WHERE id_member = {int:selected_member}',
-							array(
-								'primary_group' => $groups['primary'],
-								'selected_member' => $id,
-								'additional_groups' => implode(',', $groups['add']),
-							)
-						);
-					}
-
-					$lastLng = $user_info['language'];
-					foreach ($email_details as $email)
-					{
-						$replacements = array(
-							'USERNAME' => $email['member_name'],
-							'GROUPNAME' => $email['group_name'],
-						);
-
-						$emaildata = loadEmailTemplate('mc_group_approve', $replacements, $email['language']);
-
-						sendmail($email['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 2);
-					}
-				}
-				// Otherwise, they are getting rejected (With or without a reason).
-				else
-				{
-					// Same as for approving, kind of.
-					$lastLng = $user_info['language'];
-					foreach ($email_details as $email)
-					{
-						$custom_reason = isset($_POST['groupreason']) && isset($_POST['groupreason'][$email['rid']]) ? $_POST['groupreason'][$email['rid']] : '';
-
-						$replacements = array(
-							'USERNAME' => $email['member_name'],
-							'GROUPNAME' => $email['group_name'],
-						);
-
-						if (!empty($custom_reason))
-							$replacements['REASON'] = $custom_reason;
-
-						$emaildata = loadEmailTemplate(empty($custom_reason) ? 'mc_group_reject' : 'mc_group_reject_reason', $replacements, $email['language']);
-
-						sendmail($email['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 2);
-					}
+					$smcFunc['db_query']('', '
+						UPDATE {db_prefix}log_group_requests
+						SET status = {int:status},
+							id_member_acted = {int:id_member_acted},
+							member_name_acted = {string:member_name_acted},
+							time_acted = {int:time_acted},
+							act_reason = {string:act_reason}
+						WHERE id_request = {int:id_request}',
+						$details
+					);
 				}
 			}
-
-			// Restore the current language.
-			loadLanguage('ModerationCenter');
 		}
 	}
 
@@ -734,9 +559,8 @@ function GroupRequests()
 	// This is all the information required for a group listing.
 	$listOptions = array(
 		'id' => 'group_request_list',
-		'title' => $txt['mc_group_requests'],
 		'width' => '100%',
-		'items_per_page' => $modSettings['defaultMaxMessages'],
+		'items_per_page' => $modSettings['defaultMaxListItems'],
 		'no_items_label' => $txt['mc_groupr_none_found'],
 		'base_href' => $scripturl . '?action=groups;sa=requests',
 		'default_sort_col' => 'member',
@@ -790,7 +614,7 @@ function GroupRequests()
 			'date' => array(
 				'header' => array(
 					'value' => $txt['date'],
-					'style' => 'width: 18%;white-space:nowrap;',
+					'style' => 'width: 18%; white-space:nowrap;',
 				),
 				'data' => array(
 					'db' => 'time_submitted',
@@ -798,17 +622,18 @@ function GroupRequests()
 			),
 			'action' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" class="input_check" onclick="invertAll(this, this.form);" />',
+					'value' => '<input type="checkbox" class="input_check" onclick="invertAll(this, this.form);">',
 					'style' => 'width: 4%;',
+					'class' => 'centercol',
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '<input type="checkbox" name="groupr[]" value="%1$d" class="input_check" />',
+						'format' => '<input type="checkbox" name="groupr[]" value="%1$d" class="input_check">',
 						'params' => array(
 							'id' => false,
 						),
 					),
-					'style' => 'text-align: center;',
+					'class' => 'centercol',
 				),
 			),
 		),
@@ -827,30 +652,40 @@ function GroupRequests()
 				'value' => '
 					<select name="req_action" onchange="if (this.value != 0 &amp;&amp; (this.value == \'reason\' || confirm(\'' . $txt['mc_groupr_warning'] . '\'))) this.form.submit();">
 						<option value="0">' . $txt['with_selected'] . ':</option>
-						<option value="0">---------------------</option>
+						<option value="0" disabled>---------------------</option>
 						<option value="approve">' . $txt['mc_groupr_approve'] . '</option>
 						<option value="reject">' . $txt['mc_groupr_reject'] . '</option>
 						<option value="reason">' . $txt['mc_groupr_reject_w_reason'] . '</option>
 					</select>
-					<input type="submit" name="go" value="' . $txt['go'] . '" onclick="var sel = document.getElementById(\'req_action\'); if (sel.value != 0 &amp;&amp; sel.value != \'reason\' &amp;&amp; !confirm(\'' . $txt['mc_groupr_warning'] . '\')) return false;" class="button_submit" style="float: none"/>',
-				'align' => 'right',
+					<input type="submit" name="go" value="' . $txt['go'] . '" onclick="var sel = document.getElementById(\'req_action\'); if (sel.value != 0 &amp;&amp; sel.value != \'reason\' &amp;&amp; !confirm(\'' . $txt['mc_groupr_warning'] . '\')) return false;" class="button_submit">',
+				'class' => 'floatright',
 			),
 		),
 	);
+
+	if (isset($_GET['closed']))
+	{
+		// Closed requests don't require interaction.
+		unset($listOptions['columns']['action'], $listOptions['form'], $listOptions['additional_rows'][0]);
+		$listOptions['base_href'] .= 'closed';
+	}
 
 	// Create the request list.
 	createToken('mod-gr');
 	createList($listOptions);
 
 	$context['default_list'] = 'group_request_list';
+	$context[$context['moderation_menu_name']]['tab_data'] = array(
+		'title' => $txt['mc_group_requests'],
+	);
 }
 
 /**
  * Callback function for createList().
  *
- * @param $where
- * @param $where_parameters
- * @return int, the count of group requests
+ * @param string $where The WHERE clause for the query
+ * @param array $where_parameters The parameters for the WHERE clause
+ * @return int The number of group requests
  */
 function list_getGroupRequestCount($where, $where_parameters)
 {
@@ -872,12 +707,12 @@ function list_getGroupRequestCount($where, $where_parameters)
 /**
  * Callback function for createList()
  *
- * @param int $start
- * @param int $items_per_page
- * @param string $sort
- * @param string $where
- * @param string $where_parameters
- * @return array, an array of group requests
+ * @param int $start The result to start with
+ * @param int $items_per_page The number of items per page
+ * @param string $sort An SQL sort expression (column/direction)
+ * @param string $where Data for the WHERE clause
+ * @param string $where_parameters Parameter values to be inserted into the WHERE clause
+ * @return array An array of group requests
  * Each group request has:
  * 		'id'
  * 		'member_link'
@@ -887,29 +722,50 @@ function list_getGroupRequestCount($where, $where_parameters)
  */
 function list_getGroupRequests($start, $items_per_page, $sort, $where, $where_parameters)
 {
-	global $smcFunc, $txt, $scripturl;
+	global $smcFunc, $scripturl, $txt;
 
 	$request = $smcFunc['db_query']('', '
-		SELECT lgr.id_request, lgr.id_member, lgr.id_group, lgr.time_applied, lgr.reason,
+		SELECT
+			lgr.id_request, lgr.id_member, lgr.id_group, lgr.time_applied, lgr.reason,
+			lgr.status, lgr.id_member_acted, lgr.member_name_acted, lgr.time_acted, lgr.act_reason,
 			mem.member_name, mg.group_name, mg.online_color, mem.real_name
 		FROM {db_prefix}log_group_requests AS lgr
 			INNER JOIN {db_prefix}members AS mem ON (mem.id_member = lgr.id_member)
 			INNER JOIN {db_prefix}membergroups AS mg ON (mg.id_group = lgr.id_group)
 		WHERE ' . $where . '
 		ORDER BY {raw:sort}
-		LIMIT ' . $start . ', ' . $items_per_page,
+		LIMIT {int:start}, {int:max}',
 		array_merge($where_parameters, array(
 			'sort' => $sort,
+			'start' => $start,
+			'max' => $items_per_page,
 		))
 	);
 	$group_requests = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
+		if (empty($row['reason']))
+			$reason = '<em>(' . $txt['mc_groupr_no_reason'] . ')</em>';
+		else
+			$reason = censorText($row['reason']);
+
+		if (isset($_GET['closed']))
+		{
+			if ($row['status'] == 1)
+				$reason .= '<br><br><strong>' . $txt['mc_groupr_approved'] . '</strong>';
+			elseif ($row['status'] == 2)
+				$reason .= '<br><br><strong>' . $txt['mc_groupr_rejected'] . '</strong>';
+
+				$reason .= ' (' . timeformat($row['time_acted']) . ')';
+			if (!empty($row['act_reason']))
+				$reason .= '<br><br>' . censorText($row['act_reason']);
+		}
+
 		$group_requests[] = array(
 			'id' => $row['id_request'],
 			'member_link' => '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['real_name'] . '</a>',
 			'group_link' => '<span style="color: ' . $row['online_color'] . '">' . $row['group_name'] . '</span>',
-			'reason' => censorText($row['reason']),
+			'reason' => $reason,
 			'time_submitted' => timeformat($row['time_applied']),
 		);
 	}

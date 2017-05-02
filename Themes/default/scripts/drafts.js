@@ -9,7 +9,10 @@ function smf_DraftAutoSave(oOptions)
 	this.oDraftHandle = window;
 	this.sLastSaved = '';
 	this.bPM = this.opt.bPM ? true : false;
-	addLoadEvent(this.opt.sSelf + '.init();');
+	this.sCheckDraft = '';
+
+	// slight delay on autosave init to allow sceditor to create the iframe
+	setTimeout('addLoadEvent(' + this.opt.sSelf + '.init())', 4000);
 }
 
 // Start our self calling routine
@@ -17,39 +20,64 @@ smf_DraftAutoSave.prototype.init = function ()
 {
 	if (this.opt.iFreq > 0)
 	{
+		// find the editors wysiwyg iframe and gets its window
+		var oIframe = document.getElementsByTagName('iframe')[0];
+		var oIframeWindow = oIframe.contentWindow || oIframe.contentDocument;
 		// start the autosave timer
-		this.interval_id = setInterval(this.opt.sSelf + '.draft' + (this.bPM ? 'PM' : '') + 'Save();', this.opt.iFreq);
+		this.interval_id = window.setInterval(this.opt.sSelf + '.draft' + (this.bPM ? 'PM' : '') + 'Save();', this.opt.iFreq);
 
 		// Set up window focus and blur events
-		this.oDraftHandle.instanceRef = this;
-		this.oDraftHandle.onblur = function (oEvent) {return this.instanceRef.draftBlur(oEvent);};
-		this.oDraftHandle.onfocus = function (oEvent) {return this.instanceRef.draftFocus(oEvent);};
+		var instanceRef = this;
+		this.oDraftHandle.onblur = function (oEvent) {return instanceRef.draftBlur(oEvent, true);};
+		this.oDraftHandle.onfocus = function (oEvent) {return instanceRef.draftFocus(oEvent, true);};
+
+		// If we found the iframe window, set body focus/blur events for it
+		if (oIframeWindow.document)
+		{
+			var oIframeDoc = oIframeWindow.document;
+			// @todo oDraftAutoSave should use the this.opt.sSelf name not hardcoded
+			oIframeDoc.body.onblur = function (oEvent) {return parent.oDraftAutoSave.draftBlur(oEvent, false);};
+			oIframeDoc.body.onfocus = function (oEvent) {return parent.oDraftAutoSave.draftFocus(oEvent, false);};
+		};
 	}
 }
 
 // Moved away from the page, where did you go? ... till you return we pause autosaving
-smf_DraftAutoSave.prototype.draftBlur = function(oEvent)
+smf_DraftAutoSave.prototype.draftBlur = function(oEvent, source)
 {
-	// save what we have and turn of the autosave
-    if (this.bPM)
-        this.draftPMSave();
-    else
-        this.draftSave();
-	clearInterval(this.interval_id);
-	this.interval_id = 0;
+	if ($('#' + this.opt.sSceditorID).data("sceditor").inSourceMode() == source)
+	{
+		// save what we have and turn of the autosave
+		if (this.bPM)
+			this.draftPMSave();
+		else
+			this.draftSave();
+
+		if (this.interval_id != "")
+			window.clearInterval(this.interval_id);
+		this.interval_id = "";
+	}
+	return;
 }
 
-// Since your back we resume the autosave timer
-smf_DraftAutoSave.prototype.draftFocus = function(oEvent)
+// Since you're back we resume the autosave timer
+smf_DraftAutoSave.prototype.draftFocus = function(oEvent, source)
 {
-	this.interval_id = setInterval(this.opt.sSelf + '.draft' + (this.bPM ? 'PM' : '') + 'Save();', this.opt.iFreq);
+	if ($('#' + this.opt.sSceditorID).data("sceditor").inSourceMode() == source)
+	{
+		if (this.interval_id == "")
+			this.interval_id = window.setInterval(this.opt.sSelf + '.draft' + (this.bPM ? 'PM' : '') + 'Save();', this.opt.iFreq);
+	}
+	return;
 }
 
 // Make the call to save this draft in the background
 smf_DraftAutoSave.prototype.draftSave = function ()
 {
-	// nothing to save or already posting?
-	if (isEmptyText($('#' + this.opt.sSceditorID).data("sceditor").getText()) || smf_formSubmitted)
+	var sPostdata = $('#' + this.opt.sSceditorID).data("sceditor").getText(true);
+
+	// nothing to save or already posting or nothing changed?
+	if (isEmptyText(sPostdata) || smf_formSubmitted || this.sCheckDraft == sPostdata)
 		return false;
 
 	// Still saving the last one or other?
@@ -63,9 +91,9 @@ smf_DraftAutoSave.prototype.draftSave = function ()
 	// Get the form elements that we want to save
 	var aSections = [
 		'topic=' + parseInt(document.forms.postmodify.elements['topic'].value),
-		'id_draft=' + parseInt(document.forms.postmodify.elements['id_draft'].value),
+		'id_draft=' + (('id_draft' in document.forms.postmodify.elements) ? parseInt(document.forms.postmodify.elements['id_draft'].value) : 0),
 		'subject=' + escape(document.forms.postmodify['subject'].value.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
-		'message=' + escape($('#' + this.opt.sSceditorID).data("sceditor").getText().replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
+		'message=' + escape(sPostdata.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
 		'icon=' + escape(document.forms.postmodify['icon'].value.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
 		'save_draft=true',
 		smf_session_var + '=' + smf_session_id,
@@ -74,24 +102,29 @@ smf_DraftAutoSave.prototype.draftSave = function ()
 	// Get the locked an/or sticky values if they have been selected or set that is
 	if (this.opt.sType == 'post')
 	{
-		if (document.getElementById('check_lock').checked)
+		if (document.getElementById('check_lock') && document.getElementById('check_lock').checked)
 			aSections[aSections.length] = 'lock=1';
-		if (document.getElementById('check_sticky').checked)
+		if (document.getElementById('check_sticky') && document.getElementById('check_sticky').checked)
 			aSections[aSections.length] = 'sticky=1';
 	}
 
 	// keep track of source or wysiwyg
-	aSections[aSections.length] = 'message_mode=' + $("#message").data("sceditor").inSourceMode();
+	aSections[aSections.length] = 'message_mode=' + $('#' + this.opt.sSceditorID).data("sceditor").inSourceMode();
 
 	// Send in document for saving and hope for the best
 	sendXMLDocument.call(this, smf_prepareScriptUrl(smf_scripturl) + "action=post2;board=" + this.opt.iBoard + ";xml", aSections.join("&"), this.onDraftDone);
+
+	// Save the latest for compare
+	this.sCheckDraft = sPostdata;
 }
 
 // Make the call to save this PM draft in the background
 smf_DraftAutoSave.prototype.draftPMSave = function ()
 {
-	// nothing to save?
-	if (isEmptyText(document.forms.postmodify['message']))
+	var sPostdata = $('#' + this.opt.sSceditorID).data("sceditor").getText();
+
+	// nothing to save or already posting or nothing changed?
+	if (isEmptyText(sPostdata) || smf_formSubmitted || this.sCheckDraft == sPostdata)
 		return false;
 
 	// Still saving the last one or some other?
@@ -109,18 +142,14 @@ smf_DraftAutoSave.prototype.draftPMSave = function ()
 	// Get the rest of the form elements that we want to save, and load them up
 	var aSections = [
 		'replied_to=' + parseInt(document.forms.postmodify.elements['replied_to'].value),
-		'id_pm_draft=' + parseInt(document.forms.postmodify.elements['id_pm_draft'].value),
+		'id_pm_draft=' + (('id_pm_draft' in document.forms.postmodify.elements) ? parseInt(document.forms.postmodify.elements['id_pm_draft'].value) : 0),
 		'subject=' + escape(document.forms.postmodify['subject'].value.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
-		'message=' + escape(document.forms.postmodify['message'].value.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
+		'message=' + escape(sPostdata.replace(/&#/g, "&#38;#").php_to8bit()).replace(/\+/g, "%2B"),
 		'recipient_to=' + aTo,
 		'recipient_bcc=' + aBcc,
 		'save_draft=true',
 		smf_session_var + '=' + smf_session_id,
 	];
-
-	// Saving a copy in the outbox?
-	if (document.getElementById('outbox'))
-		aSections[aSections.length] = 'outbox=' + parseInt(document.getElementById('outbox').value);
 
 	// account for wysiwyg
 	if (this.opt.sType == 'post')
@@ -128,6 +157,9 @@ smf_DraftAutoSave.prototype.draftPMSave = function ()
 
 	// Send in (post) the document for saving
 	sendXMLDocument.call(this, smf_prepareScriptUrl(smf_scripturl) + "action=pm;sa=send2;xml", aSections.join("&"), this.onDraftDone);
+
+	// Save the latest for compare
+	this.sCheckDraft = sPostdata;
 }
 
 // Callback function of the XMLhttp request for saving the draft message

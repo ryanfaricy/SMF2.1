@@ -55,18 +55,29 @@ function calcCharLeft()
 		if (is_opera)
 			currentChars = currentSignature.replace(/\r/g, "").length;
 
-		
 		if (currentChars > maxLength)
 			document.getElementById("signatureLeft").className = "error";
 		else
 			document.getElementById("signatureLeft").className = "";
-		
-		if (currentChars > maxLength && !$("#profile_error").is(":visible"))
+
+		if (currentChars > maxLength)
 			ajax_getSignaturePreview(false);
-		else if (currentChars <= maxLength && $("#profile_error").is(":visible"))
+		// Only hide it if the only errors were signature errors...
+		else if (currentChars <= maxLength)
 		{
-			$("#profile_error").css({display:"none"});
-			$("#profile_error").html('');
+			// Are there any errors to begin with?
+			if ($(document).has("#list_errors"))
+			{
+				// Remove any signature errors
+				$("#list_errors").remove(".sig_error");
+
+				// Don't hide this if other errors remain
+				if (!$("#list_errors").has("li"))
+				{
+					$("#profile_error").css({display:"none"});
+					$("#profile_error").html('');
+				}
+			}
 		}
 	}
 
@@ -76,6 +87,10 @@ function calcCharLeft()
 function ajax_getSignaturePreview (showPreview)
 {
 	showPreview = (typeof showPreview == 'undefined') ? false : showPreview;
+
+	// Is the error box already visible?
+	var errorbox_visible = $("#profile_error").is(":visible");
+
 	$.ajax({
 		type: "POST",
 		url: smf_scripturl + "?action=xmlhttp;sa=previews;xml",
@@ -88,27 +103,52 @@ function ajax_getSignaturePreview (showPreview)
 				for (var i = 0; i < signatures.length; i++)
 				{
 					$("#" + signatures[i] + "_signature").css({display:""});
-					$("#" + signatures[i] + "_signature_display").css({display:""}).html($(request).find('[type="' + signatures[i] + '"]').text() + '<hr />');
+					$("#" + signatures[i] + "_signature_display").css({display:""}).html($(request).find('[type="' + signatures[i] + '"]').text() + '<hr>');
 				}
 			}
 
 			if ($(request).find("error").text() != '')
 			{
-				if (!$("#profile_error").is(":visible"))
-					$("#profile_error").css({display: "", position: "fixed", top: 0, left: 0, width: "100%"});
+				// If the box isn't already visible...
+				// 1. Add the initial HTML
+				// 2. Make it visible
+				if (!errorbox_visible)
+				{
+					// Build our HTML...
+					var errors_html = '<span>' + $(request).find('[type="errors_occurred"]').text() + '</span><ul id="list_errors"></ul>';
+
+					// Add it to the box...
+					$("#profile_error").html(errors_html);
+
+					// Make it visible
+					$("#profile_error").css({display: ""});
+				}
+				else
+				{
+					// Remove any existing signature-related errors...
+					$("#list_errors").remove(".sig_error");
+				}
+
 				var errors = $(request).find('[type="error"]');
-				var errors_html = '<span>' + $(request).find('[type="errors_occurred"]').text() + '</span><ul class="reset">';
+				var errors_list = '';
 
 				for (var i = 0; i < errors.length; i++)
-					errors_html += '<li>' + $(errors).text() + '</li>';
+					errors_list += '<li class="sig_error">' + $(errors).text() + '</li>';
 
-				errors_html += '</ul>';
-				$(document).find("#profile_error").html(errors_html);
+				$("#list_errors").html(errors_list);
 			}
+			// If there were more errors besides signature-related ones, don't hide it
 			else
 			{
-				$("#profile_error").css({display:"none"});
-				$("#profile_error").html('');
+				// Remove any signature errors first...
+				$("#list_errors").remove(".sig_error");
+
+				// If it still has content, there are other non-signature errors...
+				if (!$("#list_errors").has("li"))
+				{
+					$("#profile_error").css({display:"none"});
+					$("#profile_error").html('');
+				}
 			}
 		return false;
 		},
@@ -198,4 +238,47 @@ function previewExternalAvatar(src)
 		document.getElementById("avatar").style.height = maxHeight + "px";
 	}
 	document.getElementById("avatar").src = src;
+}
+
+function readfromUpload(input) {
+	if (input.files && input.files[0]) {
+		var reader = new FileReader();
+
+		reader.onload = function (e) {
+
+			// If there is an image already, hide it...
+			if ($('#attached_image').length){
+				$('#attached_image').remove();
+			}
+
+			if ($('#attached_image_new').length){
+				$('#attached_image_new').remove();
+			}
+
+			var tempImage = new Image();
+				tempImage.src = e.target.result;
+
+			var uploadedImage = $('<img />', {
+				id: 'attached_image_new',
+				src: e.target.result,
+				image: tempImage.width,
+				height: tempImage.height,
+			});
+
+			if (maxWidth != 0 && uploadedImage.width() > maxWidth)
+			{
+				uploadedImage.height(parseInt((maxWidth * uploadedImage.height()) / uploadedImage.width()) + "px");
+				uploadedImage.width(maxWidth + "px");
+			}
+			else if (maxHeight != 0 && uploadedImage.height() > maxHeight)
+			{
+				uploadedImage.width(parseInt((maxHeight * uploadedImage.width) / uploadedImage.height) + "px");
+				uploadedImage.height(maxHeight + "px");
+			}
+
+			uploadedImage.appendTo($('#avatar_upload'));
+		}
+
+		reader.readAsDataURL(input.files[0]);
+	}
 }

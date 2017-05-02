@@ -8,14 +8,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * This function allows to move a topic, making sure to ask the moderator
@@ -30,7 +30,7 @@ if (!defined('SMF'))
  */
 function MoveTopic()
 {
-	global $txt, $board, $topic, $user_info, $context, $language, $scripturl, $settings, $smcFunc, $modSettings;
+	global $txt, $board, $topic, $user_info, $context, $language, $scripturl, $smcFunc, $modSettings, $sourcedir;
 
 	if (empty($topic))
 		fatal_lang_error('no_access', false);
@@ -59,49 +59,38 @@ function MoveTopic()
 		if ($id_member_started == $user_info['id'])
 		{
 			isAllowedTo('move_own');
-			//$boards = array_merge(boardsAllowedTo('move_own'), boardsAllowedTo('move_any'));
 		}
 		else
 			isAllowedTo('move_any');
 	}
-	//else
-		//$boards = boardsAllowedTo('move_any');
+
+	$context['move_any'] = $user_info['is_admin'] || $modSettings['topic_move_any'];
+	$boards = array();
+
+	if (!$context['move_any'])
+	{
+		$boards = array_diff(boardsAllowedTo('post_new'), array($board));
+		if (empty($boards))
+		{
+			// No boards? Too bad...
+			fatal_lang_error('moveto_no_boards');
+		}
+	}
 
 	loadTemplate('MoveTopic');
 
-	// Get a list of boards this moderator can move to.
-	$request = $smcFunc['db_query']('order_by_board_order', '
-		SELECT b.id_board, b.name, b.child_level, c.name AS cat_name, c.id_cat
-		FROM {db_prefix}boards AS b
-			LEFT JOIN {db_prefix}categories AS c ON (c.id_cat = b.id_cat)
-		WHERE {query_see_board}
-			AND b.redirect = {string:blank_redirect}',
-		array(
-			'blank_redirect' => '',
-			'current_board' => $board,
-		)
+	$options = array(
+		'not_redirection' => true,
 	);
-	$number_of_boards = $smcFunc['db_num_rows']($request);
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-	{
-		if (!isset($context['categories'][$row['id_cat']]))
-			$context['categories'][$row['id_cat']] = array (
-				'name' => strip_tags($row['cat_name']),
-				'boards' => array(),
-			);
 
-		$context['categories'][$row['id_cat']]['boards'][] = array(
-			'id' => $row['id_board'],
-			'name' => strip_tags($row['name']),
-			'category' => strip_tags($row['cat_name']),
-			'child_level' => $row['child_level'],
-			'selected' => !empty($_SESSION['move_to_topic']) && $_SESSION['move_to_topic'] == $row['id_board'] && $row['id_board'] != $board,
-		);
-	}
-	$smcFunc['db_free_result']($request);
+	if (!empty($_SESSION['move_to_topic']) && $_SESSION['move_to_topic'] != $board)
+		$options['selected_board'] = $_SESSION['move_to_topic'];
 
-	if (empty($context['categories']) || (!empty($number_of_boards) && $number_of_boards == 1))
-		fatal_lang_error('moveto_noboards', false);
+	if (!$context['move_any'])
+		$options['included_boards'] = $boards;
+
+	require_once($sourcedir . '/Subs-MessageIndex.php');
+	$context['categories'] = getBoardList($options);
 
 	$context['page_title'] = $txt['move_topic'];
 
@@ -124,6 +113,8 @@ function MoveTopic()
 
 		$txt['movetopic_default'] = $temp;
 	}
+
+	$context['sub_template'] = 'move';
 
 	moveTopicConcurrence();
 
@@ -179,22 +170,9 @@ function MoveTopic2()
 	if (!allowedTo('move_any'))
 	{
 		if ($id_member_started == $user_info['id'])
-		{
 			isAllowedTo('move_own');
-			$boards = array_merge(boardsAllowedTo('move_own'), boardsAllowedTo('move_any'));
-		}
 		else
 			isAllowedTo('move_any');
-	}
-	else
-		$boards = boardsAllowedTo('move_any');
-
-	// If this topic isn't approved don't let them move it if they can't approve it!
-	if ($modSettings['postmod_active'] && !$context['is_approved'] && !allowedTo('approve_posts'))
-	{
-		// Only allow them to move it to other boards they can't approve it in.
-		$can_approve = boardsAllowedTo('approve_posts');
-		$boards = array_intersect($boards, $can_approve);
 	}
 
 	checkSession();
@@ -384,7 +362,15 @@ function MoveTopic2()
 		redirectexit('topic=' . $topic . '.0');
 }
 
-// Moves one or more topics to a specific board. (doesn't check permissions.)
+/**
+ * Moves one or more topics to a specific board. (doesn't check permissions.)
+ * Determines the source boards for the supplied topics
+ * Handles the moving of mark_read data
+ * Updates the posts count of the affected boards
+ *
+ * @param int|int[] $topics The ID of a single topic to move or an array containing the IDs of multiple topics to move
+ * @param int $toBoard The ID of the board to move the topics to
+ */
 function moveTopics($topics, $toBoard)
 {
 	global $sourcedir, $user_info, $modSettings, $smcFunc;
@@ -396,7 +382,7 @@ function moveTopics($topics, $toBoard)
 	// Only a single topic.
 	if (is_numeric($topics))
 		$topics = array($topics);
-	$num_topics = count($topics);
+
 	$fromBoards = array();
 
 	// Destination board empty or equal to 0?
@@ -405,6 +391,12 @@ function moveTopics($topics, $toBoard)
 
 	// Are we moving to the recycle board?
 	$isRecycleDest = !empty($modSettings['recycle_enable']) && $modSettings['recycle_board'] == $toBoard;
+
+	// Callback for search APIs to do their thing
+	require_once($sourcedir . '/Search.php');
+	$searchAPI = findSearchAPI();
+	if ($searchAPI->supportsMethod('topicsMoved'))
+		$searchAPI->topicsMoved($topics, $toBoard);
 
 	// Determine the source boards...
 	$request = $smcFunc['db_query']('', '
@@ -447,13 +439,13 @@ function moveTopics($topics, $toBoard)
 	// Move over the mark_read data. (because it may be read and now not by some!)
 	$SaveAServer = max(0, $modSettings['maxMsgID'] - 50000);
 	$request = $smcFunc['db_query']('', '
-		SELECT lmr.id_member, lmr.id_msg, t.id_topic
+		SELECT lmr.id_member, lmr.id_msg, t.id_topic, COALESCE(lt.unwatched, 0) AS unwatched
 		FROM {db_prefix}topics AS t
 			INNER JOIN {db_prefix}log_mark_read AS lmr ON (lmr.id_board = t.id_board
 				AND lmr.id_msg > t.id_first_msg AND lmr.id_msg > {int:protect_lmr_msg})
 			LEFT JOIN {db_prefix}log_topics AS lt ON (lt.id_topic = t.id_topic AND lt.id_member = lmr.id_member)
 		WHERE t.id_topic IN ({array_int:topics})
-			AND lmr.id_msg > IFNULL(lt.id_msg, 0)',
+			AND lmr.id_msg > COALESCE(lt.id_msg, 0)',
 		array(
 			'protect_lmr_msg' => $SaveAServer,
 			'topics' => $topics,
@@ -462,14 +454,14 @@ function moveTopics($topics, $toBoard)
 	$log_topics = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
-		$log_topics[] = array($row['id_topic'], $row['id_member'], $row['id_msg']);
+		$log_topics[] = array($row['id_topic'], $row['id_member'], $row['id_msg'], (is_null($row['unwatched']) ? 0 : $row['unwatched']));
 
 		// Prevent queries from getting too big. Taking some steam off.
 		if (count($log_topics) > 500)
 		{
 			$smcFunc['db_insert']('replace',
 				'{db_prefix}log_topics',
-				array('id_topic' => 'int', 'id_member' => 'int', 'id_msg' => 'int'),
+				array('id_topic' => 'int', 'id_member' => 'int', 'id_msg' => 'int', 'unwatched' => 'int'),
 				$log_topics,
 				array('id_topic', 'id_member')
 			);
@@ -485,7 +477,7 @@ function moveTopics($topics, $toBoard)
 		// Insert that information into the database!
 		$smcFunc['db_insert']('replace',
 			'{db_prefix}log_topics',
-			array('id_topic' => 'int', 'id_member' => 'int', 'id_msg' => 'int'),
+			array('id_topic' => 'int', 'id_member' => 'int', 'id_msg' => 'int', 'unwatched' => 'int'),
 			$log_topics,
 			array('id_topic', 'id_member')
 		);
@@ -660,7 +652,7 @@ function moveTopics($topics, $toBoard)
 
 	// Mark target board as seen, if it was already marked as seen before.
 	$request = $smcFunc['db_query']('', '
-		SELECT (IFNULL(lb.id_msg, 0) >= b.id_msg_updated) AS isSeen
+		SELECT (COALESCE(lb.id_msg, 0) >= b.id_msg_updated) AS isSeen
 		FROM {db_prefix}boards AS b
 			LEFT JOIN {db_prefix}log_boards AS lb ON (lb.id_board = b.id_board AND lb.id_member = {int:current_member})
 		WHERE b.id_board = {int:id_board}',
@@ -702,6 +694,9 @@ function moveTopics($topics, $toBoard)
 	));
 }
 
+/**
+ * Called after a topic is moved to update $board_link and $topic_link to point to new location
+ */
 function moveTopicConcurrence()
 {
 	global $board, $topic, $smcFunc, $scripturl;

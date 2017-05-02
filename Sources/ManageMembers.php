@@ -7,14 +7,14 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * The main entrance point for the Manage Members screen.
@@ -129,7 +129,7 @@ function ViewMembers()
 		unset($context['tabs']['approve']);
 	}
 
-	$subActions[$_REQUEST['sa']][0]();
+	call_helper($subActions[$_REQUEST['sa']][0]);
 }
 
 /**
@@ -165,7 +165,7 @@ function ViewMemberlist()
 		{
 			// Delete all the selected members.
 			require_once($sourcedir . '/Subs-Members.php');
-			deleteMembers($_POST['delete'], true);
+			deleteMembers($delete, true);
 		}
 	}
 
@@ -235,11 +235,6 @@ function ViewMemberlist()
 				'type' => 'date',
 				'range' => true
 			),
-			'gender' => array(
-				'db_fields' => array('gender'),
-				'type' => 'checkbox',
-				'values' => array('0', '1', '2'),
-			),
 			'activated' => array(
 				'db_fields' => array('CASE WHEN is_activated IN (1, 11) THEN 1 ELSE 0 END'),
 				'type' => 'checkbox',
@@ -257,17 +252,9 @@ function ViewMemberlist()
 				'db_fields' => array('website_title', 'website_url'),
 				'type' => 'string'
 			),
-			'location' => array(
-				'db_fields' => array('location'),
-				'type' => 'string'
-			),
 			'ip' => array(
 				'db_fields' => array('member_ip'),
-				'type' => 'string'
-			),
-			'messenger' => array(
-				'db_fields' => array('icq', 'aim', 'yim', 'msn'),
-				'type' => 'string'
+				'type' => 'inet'
 			)
 		);
 		$range_trans = array(
@@ -282,7 +269,7 @@ function ViewMemberlist()
 
 		$search_params = array();
 		if ($context['sub_action'] == 'query' && !empty($_REQUEST['params']) && empty($_POST['types']))
-			$search_params = @unserialize(base64_decode($_REQUEST['params']));
+			$search_params = smf_json_decode(base64_decode($_REQUEST['params']), true);
 		elseif (!empty($_POST))
 		{
 			$search_params['types'] = $_POST['types'];
@@ -291,7 +278,7 @@ function ViewMemberlist()
 					$search_params[$param_name] = $_POST[$param_name];
 		}
 
-		$search_url_params = isset($search_params) ? base64_encode(serialize($search_params)) : null;
+		$search_url_params = isset($search_params) ? base64_encode(json_encode($search_params)) : null;
 
 		// @todo Validate a little more.
 
@@ -370,9 +357,9 @@ function ViewMemberlist()
 				$parameter = strtolower(strtr($smcFunc['htmlspecialchars']($search_params[$param_name], ENT_QUOTES), array('%' => '\%', '_' => '\_', '*' => '%', '?' => '_')));
 
 				if ($smcFunc['db_case_sensitive'])
-					$query_parts[] = '(LOWER(' . implode( ') LIKE {string:' . $param_name . '_normal} OR LOWER(', $param_info['db_fields']) . ') LIKE {string:' . $param_name . '_normal})';
+					$query_parts[] = '(LOWER(' . implode(') LIKE {string:' . $param_name . '_normal} OR LOWER(', $param_info['db_fields']) . ') LIKE {string:' . $param_name . '_normal})';
 				else
-					$query_parts[] = '(' . implode( ' LIKE {string:' . $param_name . '_normal} OR ', $param_info['db_fields']) . ' LIKE {string:' . $param_name . '_normal})';
+					$query_parts[] = '(' . implode(' LIKE {string:' . $param_name . '_normal} OR ', $param_info['db_fields']) . ' LIKE {string:' . $param_name . '_normal})';
 				$where_params[$param_name . '_normal'] = '%' . $parameter . '%';
 			}
 		}
@@ -407,7 +394,7 @@ function ViewMemberlist()
 		}
 
 		// Construct the where part of the query.
-		$where = empty($query_parts) ? '1' : implode('
+		$where = empty($query_parts) ? '1=1' : implode('
 			AND ', $query_parts);
 	}
 	else
@@ -448,7 +435,6 @@ function ViewMemberlist()
 				),
 				'data' => array(
 					'db' => 'id_member',
-					'style' => 'text-align: center;',
 				),
 				'sort' => array(
 					'default' => 'id_member',
@@ -467,6 +453,7 @@ function ViewMemberlist()
 							'member_name' => false,
 						),
 					),
+					'class' => 'hidden',
 				),
 				'sort' => array(
 					'default' => 'member_name',
@@ -519,10 +506,11 @@ function ViewMemberlist()
 							'member_ip' => false,
 						),
 					),
+					'class' => 'hidden',
 				),
 				'sort' => array(
-					'default' => 'INET_ATON(member_ip)',
-					'reverse' => 'INET_ATON(member_ip) DESC',
+					'default' => 'member_ip',
+					'reverse' => 'member_ip DESC',
 				),
 			),
 			'last_active' => array(
@@ -530,35 +518,35 @@ function ViewMemberlist()
 					'value' => $txt['viewmembers_online'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $txt;
-
+					'function' => function($rowData) use ($txt)
+					{
 						// Calculate number of days since last online.
-						if (empty($rowData[\'last_login\']))
-							$difference = $txt[\'never\'];
+						if (empty($rowData['last_login']))
+							$difference = $txt['never'];
 						else
 						{
-							$num_days_difference = jeffsdatediff($rowData[\'last_login\']);
+							$num_days_difference = jeffsdatediff($rowData['last_login']);
 
 							// Today.
 							if (empty($num_days_difference))
-								$difference = $txt[\'viewmembers_today\'];
+								$difference = $txt['viewmembers_today'];
 
 							// Yesterday.
 							elseif ($num_days_difference == 1)
-								$difference = sprintf(\'1 %1$s\', $txt[\'viewmembers_day_ago\']);
+								$difference = sprintf('1 %1$s', $txt['viewmembers_day_ago']);
 
 							// X days ago.
 							else
-								$difference = sprintf(\'%1$d %2$s\', $num_days_difference, $txt[\'viewmembers_days_ago\']);
+								$difference = sprintf('%1$d %2$s', $num_days_difference, $txt['viewmembers_days_ago']);
 						}
 
-						// Show it in italics if they\'re not activated...
-						if ($rowData[\'is_activated\'] % 10 != 1)
-							$difference = sprintf(\'<em title="%1$s">%2$s</em>\', $txt[\'not_activated\'], $difference);
+						// Show it in italics if they're not activated...
+						if ($rowData['is_activated'] % 10 != 1)
+							$difference = sprintf('<em title="%1$s">%2$s</em>', $txt['not_activated'], $difference);
 
 						return $difference;
-					'),
+					},
+					'class' => 'hidden',
 				),
 				'sort' => array(
 					'default' => 'last_login DESC',
@@ -571,6 +559,7 @@ function ViewMemberlist()
 				),
 				'data' => array(
 					'db' => 'posts',
+					'class' => 'hidden',
 				),
 				'sort' => array(
 					'default' => 'posts',
@@ -579,15 +568,15 @@ function ViewMemberlist()
 			),
 			'check' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check" />',
+					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check">',
+					'class' => 'centercol',
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $user_info;
-
-						return \'<input type="checkbox" name="delete[]" value="\' . $rowData[\'id_member\'] . \'" class="input_check" \' . ($rowData[\'id_member\'] == $user_info[\'id\'] || $rowData[\'id_group\'] == 1 || in_array(1, explode(\',\', $rowData[\'additional_groups\'])) ? \'disabled="disabled"\' : \'\') . \' />\';
-					'),
-					'style' => 'text-align: center',
+					'function' => function($rowData) use ($user_info)
+					{
+						return '<input type="checkbox" name="delete[]" value="' . $rowData['id_member'] . '" class="input_check"' . ($rowData['id_member'] == $user_info['id'] || $rowData['id_group'] == 1 || in_array(1, explode(',', $rowData['additional_groups'])) ? ' disabled' : '') . '>';
+					},
+					'class' => 'centercol',
 				),
 			),
 		),
@@ -599,8 +588,7 @@ function ViewMemberlist()
 		'additional_rows' => array(
 			array(
 				'position' => 'below_table_data',
-				'value' => '<input type="submit" name="delete_members" value="' . $txt['admin_delete_members'] . '" onclick="return confirm(\'' . $txt['confirm_delete_members'] . '\');" class="button_submit" />',
-				'style' => 'text-align: right;',
+				'value' => '<input type="submit" name="delete_members" value="' . $txt['admin_delete_members'] . '" data-confirm="' . $txt['confirm_delete_members'] . '" class="button_submit you_sure">',
 			),
 		),
 	);
@@ -680,7 +668,7 @@ function SearchMembers()
  */
 function MembersAwaitingActivation()
 {
-	global $txt, $context, $scripturl, $modSettings, $smcFunc;
+	global $txt, $context, $scripturl, $modSettings;
 	global $sourcedir;
 
 	// Not a lot here!
@@ -758,8 +746,8 @@ function MembersAwaitingActivation()
 
 	// Create an option list for actions allowed to be done with selected members.
 	$allowed_actions = '
-			<option selected="selected" value="">' . $txt['admin_browse_with_selected'] . ':</option>
-			<option value="" disabled="disabled">-----------------------------</option>';
+			<option selected value="">' . $txt['admin_browse_with_selected'] . ':</option>
+			<option value="" disabled>-----------------------------</option>';
 	foreach ($context['allowed_actions'] as $key => $desc)
 		$allowed_actions .= '
 			<option value="' . $key . '">' . $desc . '</option>';
@@ -826,7 +814,6 @@ function MembersAwaitingActivation()
 				),
 				'data' => array(
 					'db' => 'id_member',
-					'style' => 'text-align: center;',
 				),
 				'sort' => array(
 					'default' => 'id_member',
@@ -881,8 +868,8 @@ function MembersAwaitingActivation()
 					),
 				),
 				'sort' => array(
-					'default' => 'INET_ATON(member_ip)',
-					'reverse' => 'INET_ATON(member_ip) DESC',
+					'default' => 'member_ip',
+					'reverse' => 'member_ip DESC',
 				),
 			),
 			'hostname' => array(
@@ -890,11 +877,10 @@ function MembersAwaitingActivation()
 					'value' => $txt['hostname'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $modSettings;
-
-						return host_from_ip($rowData[\'member_ip\']);
-					'),
+					'function' => function($rowData)
+					{
+						return host_from_ip(inet_dtop($rowData['member_ip']));
+					},
 					'class' => 'smalltext',
 				),
 			),
@@ -903,9 +889,10 @@ function MembersAwaitingActivation()
 					'value' => $context['current_filter'] == 4 ? $txt['viewmembers_online'] : $txt['date_registered'],
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						return timeformat($rowData[\'' . ($context['current_filter'] == 4 ? 'last_login' : 'date_registered') . '\']);
-					'),
+					'function' => function($rowData) use ($context)
+					{
+						return timeformat($rowData['' . ($context['current_filter'] == 4 ? 'last_login' : 'date_registered') . '']);
+					},
 				),
 				'sort' => array(
 					'default' => $context['current_filter'] == 4 ? 'mem.last_login DESC' : 'date_registered DESC',
@@ -916,37 +903,37 @@ function MembersAwaitingActivation()
 				'header' => array(
 					'value' => $txt['duplicates'],
 					// Make sure it doesn't go too wide.
-					'style' => 'width: 20%',
+					'style' => 'width: 20%;',
 				),
 				'data' => array(
-					'function' => create_function('$rowData', '
-						global $scripturl, $txt;
-
+					'function' => function($rowData) use ($scripturl, $txt)
+					{
 						$member_links = array();
-						foreach ($rowData[\'duplicate_members\'] as $member)
+						foreach ($rowData['duplicate_members'] as $member)
 						{
-							if ($member[\'id\'])
-								$member_links[] = \'<a href="\' . $scripturl . \'?action=profile;u=\' . $member[\'id\'] . \'" \' . (!empty($member[\'is_banned\']) ? \'style="color: red;"\' : \'\') . \'>\' . $member[\'name\'] . \'</a>\';
+							if ($member['id'])
+								$member_links[] = '<a href="' . $scripturl . '?action=profile;u=' . $member['id'] . '" ' . (!empty($member['is_banned']) ? 'class="red"' : '') . '>' . $member['name'] . '</a>';
 							else
-								$member_links[] = $member[\'name\'] . \' (\' . $txt[\'guest\'] . \')\';
+								$member_links[] = $member['name'] . ' (' . $txt['guest'] . ')';
 						}
-						return implode (\', \', $member_links);
-					'),
+						return implode(', ', $member_links);
+					},
 					'class' => 'smalltext',
 				),
 			),
 			'check' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check" />',
+					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check">',
+					'class' => 'centercol',
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '<input type="checkbox" name="todoAction[]" value="%1$d" class="input_check" />',
+						'format' => '<input type="checkbox" name="todoAction[]" value="%1$d" class="input_check">',
 						'params' => array(
 							'id_member' => false,
 						),
 					),
-					'style' => 'text-align: center',
+					'class' => 'centercol',
 				),
 			),
 		),
@@ -968,7 +955,7 @@ function MembersAwaitingActivation()
 					<select name="todo" onchange="onSelectChange();">
 						' . $allowed_actions . '
 					</select>
-					<noscript><input type="submit" value="' . $txt['go'] . '" class="button_submit" /><br class="clear_right"></noscript>
+					<noscript><input type="submit" value="' . $txt['go'] . '" class="button_submit"><br class="clear_right"></noscript>
 				',
 				'class' => 'floatright',
 			),
@@ -993,10 +980,10 @@ function MembersAwaitingActivation()
 			<select name="filter" onchange="this.form.submit();">';
 		foreach ($context['available_filters'] as $filter)
 			$filterOptions .= '
-				<option value="' . $filter['type'] . '"' . ($filter['selected'] ? ' selected="selected"' : '') . '>' . $filter['desc'] . ' - ' . $filter['amount'] . ' ' . ($filter['amount'] == 1 ? $txt['user'] : $txt['users']) . '</option>';
+				<option value="' . $filter['type'] . '"' . ($filter['selected'] ? ' selected' : '') . '>' . $filter['desc'] . ' - ' . $filter['amount'] . ' ' . ($filter['amount'] == 1 ? $txt['user'] : $txt['users']) . '</option>';
 		$filterOptions .= '
 			</select>
-			<noscript><input type="submit" value="' . $txt['go'] . '" name="filter" class="button_submit" /></noscript>';
+			<noscript><input type="submit" value="' . $txt['go'] . '" name="filter" class="button_submit"></noscript>';
 		$listOptions['additional_rows'][] = array(
 			'position' => 'top_of_list',
 			'value' => $filterOptions,
@@ -1026,7 +1013,7 @@ function MembersAwaitingActivation()
  */
 function AdminApprove()
 {
-	global $txt, $context, $scripturl, $modSettings, $sourcedir, $language, $user_info, $smcFunc;
+	global $scripturl, $modSettings, $sourcedir, $language, $user_info, $smcFunc;
 
 	// First, check our session.
 	checkSession();
@@ -1037,7 +1024,6 @@ function AdminApprove()
 	loadLanguage('Login');
 
 	// Sort out where we are going...
-	$browse_type = isset($_REQUEST['type']) ? $_REQUEST['type'] : (!empty($modSettings['registration_method']) && $modSettings['registration_method'] == 1 ? 'activate' : 'approve');
 	$current_filter = (int) $_REQUEST['orig_filter'];
 
 	// If we are applying a filter do just that - then redirect.
@@ -1138,7 +1124,7 @@ function AdminApprove()
 				);
 
 				$emaildata = loadEmailTemplate('admin_approve_accept', $replacements, $member['language']);
-				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 0);
+				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, 'accapp' . $member['id'], $emaildata['is_html'], 0);
 			}
 		}
 	}
@@ -1178,7 +1164,7 @@ function AdminApprove()
 			);
 
 			$emaildata = loadEmailTemplate('admin_approve_activation', $replacements, $member['language']);
-			sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 0);
+			sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, 'accact' . $member['id'], $emaildata['is_html'], 0);
 		}
 	}
 	// Are we rejecting them?
@@ -1197,7 +1183,7 @@ function AdminApprove()
 				);
 
 				$emaildata = loadEmailTemplate('admin_approve_reject', $replacements, $member['language']);
-				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
+				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, 'accrej', $emaildata['is_html'], 1);
 			}
 		}
 	}
@@ -1217,7 +1203,7 @@ function AdminApprove()
 				);
 
 				$emaildata = loadEmailTemplate('admin_approve_delete', $replacements, $member['language']);
-				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
+				sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, 'accdel', $emaildata['is_html'], 1);
 			}
 		}
 	}
@@ -1234,7 +1220,7 @@ function AdminApprove()
 			);
 
 			$emaildata = loadEmailTemplate('admin_approve_remind', $replacements, $member['language']);
-			sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
+			sendmail($member['email'], $emaildata['subject'], $emaildata['body'], null, 'accrem' . $member['id'], $emaildata['is_html'], 1);
 		}
 	}
 
@@ -1250,7 +1236,6 @@ function AdminApprove()
 	if (!empty($modSettings['modlog_enabled']) && in_array($_POST['todo'], array('ok', 'okemail', 'require_activation', 'remind')))
 	{
 		$log_action = $_POST['todo'] == 'remind' ? 'remind_member' : 'approve_member';
-		$log_inserts = array();
 
 		require_once($sourcedir . '/Logging.php');
 		foreach ($member_info as $member)
@@ -1258,7 +1243,7 @@ function AdminApprove()
 	}
 
 	// Although updateStats *may* catch this, best to do it manually just in case (Doesn't always sort out unapprovedMembers).
-	if (in_array($current_filter, array(3, 4)))
+	if (in_array($current_filter, array(3, 4, 5)))
 		updateSettings(array('unapprovedMembers' => ($modSettings['unapprovedMembers'] > $member_count ? $modSettings['unapprovedMembers'] - $member_count : 0)));
 
 	// Update the member's stats. (but, we know the member didn't change their name.)
@@ -1276,8 +1261,8 @@ function AdminApprove()
  * Requires a unix timestamp as input, returns an integer.
  * Named in honour of Jeff Lewis, the original creator of...this function.
  *
- * @param $old
- * @return int, the returned number of days, based on the forum time.
+ * @param int $old The timestamp of the old date
+ * @return int The number of days since $old, based on the forum time
  */
 function jeffsdatediff($old)
 {

@@ -7,26 +7,26 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2012 Simple Machines
+ * @copyright 2017 Simple Machines and individual contributors
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Alpha 1
+ * @version 2.1 Beta 3
  */
 
 if (!defined('SMF'))
-	die('Hacking attempt...');
+	die('No direct access...');
 
 /**
  * Retrieve a list and several other statistics of the users currently online.
  * Used by the board index and SSI.
  * Also returns the membergroups of the users that are currently online.
- * (optionally) hides members that chose to hide their online presense.
- * @param array $membersOnlineOptions
- * @return array
+ * (optionally) hides members that chose to hide their online presence.
+ * @param array $membersOnlineOptions An array of options for the list
+ * @return array An array of information about the online users
  */
 function getMembersOnlineStats($membersOnlineOptions)
 {
-	global $smcFunc, $context, $scripturl, $user_info, $modSettings, $txt;
+	global $smcFunc, $scripturl, $user_info, $modSettings, $txt;
 
 	// The list can be sorted in several ways.
 	$allowed_sort_options = array(
@@ -48,10 +48,6 @@ function getMembersOnlineStats($membersOnlineOptions)
 	elseif (!in_array($membersOnlineOptions['sort'], $allowed_sort_options))
 		trigger_error('Sort method for getMembersOnlineStats() function is not allowed', E_USER_NOTICE);
 
-	// Get it from the cache and send it back.
-	if (($temp = cache_get_data('membersOnlineStats-' . $membersOnlineOptions['sort'], 240)) !== null)
-		return $temp;
-
 	// Initialize the array that'll be returned later on.
 	$membersOnlineStats = array(
 		'users_online' => array(),
@@ -68,7 +64,7 @@ function getMembersOnlineStats($membersOnlineOptions)
 	$spiders = array();
 	$spider_finds = array();
 	if (!empty($modSettings['show_spider_online']) && ($modSettings['show_spider_online'] < 3 || allowedTo('admin_forum')) && !empty($modSettings['spider_name_cache']))
-		$spiders = unserialize($modSettings['spider_name_cache']);
+		$spiders = smf_json_decode($modSettings['spider_name_cache'], true);
 
 	// Load the users online right now.
 	$request = $smcFunc['db_query']('', '
@@ -188,14 +184,12 @@ function getMembersOnlineStats($membersOnlineOptions)
 	// Hidden and non-hidden members make up all online members.
 	$membersOnlineStats['num_users_online'] = count($membersOnlineStats['users_online']) + $membersOnlineStats['num_users_hidden'] - (isset($modSettings['show_spider_online']) && $modSettings['show_spider_online'] > 1 ? count($spider_finds) : 0);
 
-	cache_put_data('membersOnlineStats-' . $membersOnlineOptions['sort'], $membersOnlineStats, 240);
-
 	return $membersOnlineStats;
 }
 
 /**
  * Check if the number of users online is a record and store it.
- * @param int $total_users_online
+ * @param int $total_users_online The total number of members online
  */
 function trackStatsUsersOnline($total_users_online)
 {

@@ -1,7 +1,6 @@
-$(document).ready(function() {
-	// menu drop downs
-	$('ul.dropmenu').superfish();
-	
+$(function() {
+	$('ul.dropmenu, ul.quickbuttons').superfish({delay : 250, speed: 100, sensitivity : 8, interval : 50, timeout : 1});
+
 	// tooltips
 	$('.preview').SMFtooltip();
 
@@ -12,18 +11,24 @@ $(document).ready(function() {
 // The purpose of this code is to fix the height of overflow: auto blocks, because some browsers can't figure it out for themselves.
 function smf_codeBoxFix()
 {
-	var codeFix = document.getElementsByTagName('code');
-	for (var i = codeFix.length - 1; i >= 0; i--)
+	var codeFix = $('code');
+	$.each(codeFix, function(index, tag)
 	{
-		if (is_webkit && codeFix[i].offsetHeight < 20)
-			codeFix[i].style.height = (codeFix[i].offsetHeight + 20) + 'px';
+		if (is_webkit && $(tag).height() < 20)
+			$(tag).css({height: ($(tag).height + 20) + 'px'});
 
-		else if (is_ff && (codeFix[i].scrollWidth > codeFix[i].clientWidth || codeFix[i].clientWidth == 0))
-			codeFix[i].style.overflow = 'scroll';
+		else if (is_ff && ($(tag)[0].scrollWidth > $(tag).innerWidth() || $(tag).innerWidth() == 0))
+			$(tag).css({overflow: 'scroll'});
 
-		else if ('currentStyle' in codeFix[i] && codeFix[i].currentStyle.overflow == 'auto' && (codeFix[i].currentStyle.height == '' || codeFix[i].currentStyle.height == 'auto') && (codeFix[i].scrollWidth > codeFix[i].clientWidth || codeFix[i].clientWidth == 0) && (codeFix[i].offsetHeight != 0))
-			codeFix[i].style.height = (codeFix[i].offsetHeight + 24) + 'px';
-	}
+		// Holy conditional, Batman!
+		else if (
+			'currentStyle' in $(tag) && $(tag)[0].currentStyle.overflow == 'auto'
+			&& ($(tag).innerHeight() == '' || $(tag).innerHeight() == 'auto')
+			&& ($(tag)[0].scrollWidth > $(tag).innerWidth() || $(tag).innerWidth == 0)
+			&& ($(tag).outerHeight() != 0)
+		)
+			$(tag).css({height: ($(tag).height + 24) + 'px'});
+	});
 }
 
 // Add a fix for code stuff?
@@ -33,40 +38,30 @@ if (is_ie || is_webkit || is_ff)
 // Toggles the element height and width styles of an image.
 function smc_toggleImageDimensions()
 {
-	var oImages = document.getElementsByTagName('IMG');
-	for (oImage in oImages)
-	{
-		// Not a resized image? Skip it.
-		if (oImages[oImage].className == undefined || oImages[oImage].className.indexOf('bbc_img resized') == -1)
-			continue;
+	var images = $('img.bbc_img');
 
-		oImages[oImage].style.cursor = 'pointer';
-		oImages[oImage].onclick = function() {
-			this.style.width = this.style.height = this.style.width == 'auto' ? null : 'auto';
-		};
-	}
+	$.each(images, function(key, img)
+	{
+		if ($(img).hasClass('resized'))
+		{
+			$(img).css({cursor: 'pointer'});
+			$(img).on('click', function()
+			{
+				var size = $(this)[0].style.width == 'auto' ? '' : 'auto';
+				$(this).css({width: size, height: size});
+			});
+		}
+	});
 }
 
 // Add a load event for the function above.
 addLoadEvent(smc_toggleImageDimensions);
 
-// Adds a button to a certain button strip.
-function smf_addButton(sButtonStripId, bUseImage, oOptions)
+function smf_addButton(stripId, image, options)
 {
-	var oButtonStrip = document.getElementById(sButtonStripId);
-	var aItems = oButtonStrip.getElementsByTagName('span');
-
-	// Remove the 'last' class from the last item.
-	if (aItems.length > 0)
-	{
-		var oLastSpan = aItems[aItems.length - 1];
-		oLastSpan.className = oLastSpan.className.replace(/\s*last/, 'position_holder');
-	}
-
-	// Add the button.
-	var oButtonStripList = oButtonStrip.getElementsByTagName('ul')[0];
-	var oNewButton = document.createElement('li');
-	setInnerHTML(oNewButton, '<a href="' + oOptions.sUrl + '" ' + ('sCustom' in oOptions ? oOptions.sCustom : '') + '><span class="last"' + ('sId' in oOptions ? ' id="' + oOptions.sId + '"': '') + '>' + oOptions.sText + '</span></a>');
-
-	oButtonStripList.appendChild(oNewButton);
+	$('#' + stripId).append(
+		'<a href="' + options.sUrl + '" class="button last" ' + ('sCustom' in options ? options.sCustom : '') + ' ' + ('sId' in options ? ' id="' + options.sId + '_text"' : '') + '>'
+			+ options.sText +
+		'</a>'
+	);
 }
