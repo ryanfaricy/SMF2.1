@@ -3,66 +3,69 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * This handles the Who's Online page
- */
+// The only template in the file.
 function template_main()
 {
-	global $context, $settings, $scripturl, $txt;
+	global $context, $settings, $options, $scripturl, $txt;
 
 	// Display the table header and linktree.
 	echo '
 	<div class="main_section" id="whos_online">
 		<form action="', $scripturl, '?action=who" method="post" id="whoFilter" accept-charset="', $context['character_set'], '">
-			<div class="cat_bar">
-				<h3 class="catbg">', $txt['who_title'], '</h3>
+			<div class="title_bar">
+				<h4 class="titlebg margin_lower">', $txt['who_title'], '</h4>
 			</div>
-			<div id="mlist">
+			<div class="topic_table" id="mlist">
 				<div class="pagesection">
-					<div class="pagelinks floatleft">', $context['page_index'], '</div>';
-	echo '
-					<div class="selectbox floatright" id="upper_show">', $txt['who_show1'], '
+					<div class="pagelinks floatleft">', $txt['pages'], ': ', $context['page_index'], '</div>';
+		echo '
+					<div class="selectbox floatright">', $txt['who_show1'], '
 						<select name="show_top" onchange="document.forms.whoFilter.show.value = this.value; document.forms.whoFilter.submit();">';
 
-	foreach ($context['show_methods'] as $value => $label)
+		foreach ($context['show_methods'] as $value => $label)
+			echo '
+							<option value="', $value, '" ', $value == $context['show_by'] ? ' selected="selected"' : '', '>', $label, '</option>';
 		echo '
-							<option value="', $value, '" ', $value == $context['show_by'] ? ' selected' : '', '>', $label, '</option>';
-	echo '
 						</select>
 						<noscript>
-							<input type="submit" name="submit_top" value="', $txt['go'], '" class="button_submit">
+							<input type="submit" name="submit_top" value="', $txt['go'], '" class="button_submit" />
 						</noscript>
 					</div>
 				</div>
-				<table class="table_grid">
+				<table class="table_grid" cellspacing="0">
 					<thead>
-						<tr class="title_bar">
-							<th scope="col" class="lefttext" style="width: 40%;"><a href="', $scripturl, '?action=who;start=', $context['start'], ';show=', $context['show_by'], ';sort=user', $context['sort_direction'] != 'down' && $context['sort_by'] == 'user' ? '' : ';asc', '" rel="nofollow">', $txt['who_user'], $context['sort_by'] == 'user' ? '<span class="generic_icons sort_' . $context['sort_direction'] . '"></span>' : '', '</a></th>
-							<th scope="col" class="lefttext time" style="width: 10%;"><a href="', $scripturl, '?action=who;start=', $context['start'], ';show=', $context['show_by'], ';sort=time', $context['sort_direction'] == 'down' && $context['sort_by'] == 'time' ? ';asc' : '', '" rel="nofollow">', $txt['who_time'], $context['sort_by'] == 'time' ? '<span class="generic_icons sort_' . $context['sort_direction'] . '"></span>' : '', '</a></th>
-							<th scope="col" class="lefttext half_table">', $txt['who_action'], '</th>
+						<tr class="catbg">
+							<th scope="col" class="lefttext first_th" width="40%"><a href="', $scripturl, '?action=who;start=', $context['start'], ';show=', $context['show_by'], ';sort=user', $context['sort_direction'] != 'down' && $context['sort_by'] == 'user' ? '' : ';asc', '" rel="nofollow">', $txt['who_user'], ' ', $context['sort_by'] == 'user' ? '<img src="' . $settings['images_url'] . '/sort_' . $context['sort_direction'] . '.gif" alt="" />' : '', '</a></th>
+							<th scope="col" class="lefttext" width="10%"><a href="', $scripturl, '?action=who;start=', $context['start'], ';show=', $context['show_by'], ';sort=time', $context['sort_direction'] == 'down' && $context['sort_by'] == 'time' ? ';asc' : '', '" rel="nofollow">', $txt['who_time'], ' ', $context['sort_by'] == 'time' ? '<img src="' . $settings['images_url'] . '/sort_' . $context['sort_direction'] . '.gif" alt="" />' : '', '</a></th>
+							<th scope="col" class="lefttext last_th" width="50%">', $txt['who_action'], '</th>
 						</tr>
 					</thead>
 					<tbody>';
 
+	// For every member display their name, time and action (and more for admin).
+	$alternate = 0;
+
 	foreach ($context['members'] as $member)
 	{
+		// $alternate will either be true or false. If it's true, use "windowbg2" and otherwise use "windowbg".
 		echo '
-						<tr class="windowbg">
+						<tr class="windowbg', $alternate ? '2' : '', '">
 							<td>';
 
-		// Guests can't be messaged.
+		// Guests don't have information like icq, msn, y!, and aim... and they can't be messaged.
 		if (!$member['is_guest'])
 		{
 			echo '
 								<span class="contact_info floatright">
-									', $context['can_send_pm'] ? '<a href="' . $member['online']['href'] . '" title="' . $member['online']['text'] . '">' : '', $settings['use_image_buttons'] ? '<span class="' . ($member['online']['is_online'] == 1 ? 'on' : 'off') . '" title="' . $member['online']['text'] . '"></span>' : $member['online']['label'], $context['can_send_pm'] ? '</a>' : '', '
+									', $context['can_send_pm'] ? '<a href="' . $member['online']['href'] . '" title="' . $member['online']['label'] . '">' : '', $settings['use_image_buttons'] ? '<img src="' . $member['online']['image_href'] . '" alt="' . $member['online']['text'] . '" align="bottom" />' : $member['online']['text'], $context['can_send_pm'] ? '</a>' : '', '
+									', isset($context['disabled_fields']['icq']) ? '' : $member['icq']['link'] , ' ', isset($context['disabled_fields']['msn']) ? '' : $member['msn']['link'], ' ', isset($context['disabled_fields']['yim']) ? '' : $member['yim']['link'], ' ', isset($context['disabled_fields']['aim']) ? '' : $member['aim']['link'], '
 								</span>';
 		}
 
@@ -77,17 +80,20 @@ function template_main()
 
 		echo '
 							</td>
-							<td class="time">', $member['time'], '</td>
+							<td nowrap="nowrap">', $member['time'], '</td>
 							<td>', $member['action'], '</td>
 						</tr>';
+
+		// Switch alternate to whatever it wasn't this time. (true -> false -> true -> false, etc.)
+		$alternate = !$alternate;
 	}
 
 	// No members?
 	if (empty($context['members']))
 	{
 		echo '
-						<tr class="windowbg">
-							<td colspan="3">
+						<tr class="windowbg2">
+							<td colspan="3" align="center">
 							', $txt['who_no_online_' . ($context['show_by'] == 'guests' || $context['show_by'] == 'spiders' ? $context['show_by'] : 'members')], '
 							</td>
 						</tr>';
@@ -96,31 +102,28 @@ function template_main()
 	echo '
 					</tbody>
 				</table>
-				<div class="pagesection" id="lower_pagesection">
-					<div class="pagelinks floatleft" id="lower_pagelinks">', $context['page_index'], '</div>';
+			</div>
+			<div class="pagesection">
+				<div class="pagelinks floatleft">', $txt['pages'], ': ', $context['page_index'], '</div>';
 
 	echo '
-					<div class="selectbox floatright">', $txt['who_show1'], '
-						<select name="show" onchange="document.forms.whoFilter.submit();">';
+				<div class="selectbox floatright">', $txt['who_show1'], '
+					<select name="show" onchange="document.forms.whoFilter.submit();">';
 
 	foreach ($context['show_methods'] as $value => $label)
 		echo '
-							<option value="', $value, '" ', $value == $context['show_by'] ? ' selected' : '', '>', $label, '</option>';
+						<option value="', $value, '" ', $value == $context['show_by'] ? ' selected="selected"' : '', '>', $label, '</option>';
 	echo '
-						</select>
-						<noscript>
-							<input type="submit" value="', $txt['go'], '" class="button_submit">
-						</noscript>
-					</div>
+					</select>
+					<noscript>
+						<input type="submit" value="', $txt['go'], '" class="button_submit" />
+					</noscript>
 				</div>
 			</div>
 		</form>
 	</div>';
 }
 
-/**
- * This displays a nice credits page
- */
 function template_credits()
 {
 	global $context, $txt;
@@ -136,8 +139,12 @@ function template_credits()
 	{
 		if (isset($section['pretext']))
 		echo '
-		<div class="windowbg noup">
-			<p>', $section['pretext'], '</p>
+		<div class="windowbg">
+			<span class="topslice"><span></span></span>
+			<div class="content">
+				<p>', $section['pretext'], '</p>
+			</div>
+			<span class="botslice"><span></span></span>
 		</div>';
 
 		if (isset($section['title']))
@@ -147,17 +154,19 @@ function template_credits()
 		</div>';
 
 		echo '
-		<div class="windowbg2 noup">
-			<dl>';
+		<div class="windowbg2">
+			<span class="topslice"><span></span></span>
+			<div class="content">
+				<dl>';
 
 		foreach ($section['groups'] as $group)
 		{
 			if (isset($group['title']))
 				echo '
-				<dt>
-					<strong>', $group['title'], '</strong>
-				</dt>
-				<dd>';
+					<dt>
+						<strong>', $group['title'], '</strong>
+					</dt>
+					<dd>';
 
 			// Try to make this read nicely.
 			if (count($group['members']) <= 2)
@@ -169,85 +178,50 @@ function template_credits()
 			}
 
 			echo '
-				</dd>';
+					</dd>';
 		}
 
 		echo '
-			</dl>';
+				</dl>';
 
 		if (isset($section['posttext']))
 			echo '
 				<p class="posttext">', $section['posttext'], '</p>';
 
 		echo '
+			</div>
+			<span class="botslice"><span></span></span>
 		</div>';
 	}
 
-	// Other software and graphics
-	if (!empty($context['credits_software_graphics']))
-	{
-		echo '
-		<div class="cat_bar">
-			<h3 class="catbg">', $txt['credits_software_graphics'], '</h3>
-		</div>
-		<div class="windowbg noup">';
-
-		if (!empty($context['credits_software_graphics']['graphics']))
-			echo '
-			<dl>
-				<dt><strong>', $txt['credits_graphics'], '</strong></dt>
-				<dd>', implode('</dd><dd>', $context['credits_software_graphics']['graphics']), '</dd>
-			</dl>';
-
-		if (!empty($context['credits_software_graphics']['software']))
-			echo '
-			<dl>
-				<dt><strong>', $txt['credits_software'], '</strong></dt>
-				<dd>', implode('</dd><dd>', $context['credits_software_graphics']['software']), '</dd>
-			</dl>';
-
-		if (!empty($context['credits_software_graphics']['fonts']))
-			echo '
-			<dl>
-				<dt><strong>', $txt['credits_fonts'], '</strong></dt>
-				<dd>', implode('</dd><dd>', $context['credits_software_graphics']['fonts']), '</dd>
-			</dl>';
-		echo '
-		</div>';
-	}
-
-	// How about Modifications, we all love em
-	if (!empty($context['credits_modifications']) || !empty($context['copyrights']['mods']))
-	{
-		echo '
-		<div class="cat_bar">
-			<h3 class="catbg">', $txt['credits_modifications'], '</h3>
-		</div>
-		<div class="windowbg noup">';
-
-		// Display the credits.
-		if (!empty($context['credits_modifications']))
-			echo '
-			', implode('
-			<br>', $context['credits_modifications']);
-
-		// Legacy.
-		if (!empty($context['copyrights']['mods']))
-			echo (empty($context['credits_modifications']) ? '<br>' : ''),
-			implode('
-			<br>', $context['copyrights']['mods']);
-
-		echo '
-		</div>';
-	}
-
-	// SMF itself
 	echo '
 		<div class="cat_bar">
-			<h3 class="catbg">', $txt['credits_forum'], ' ', $txt['credits_copyright'], '</h3>
+			<h3 class="catbg">', $txt['credits_copyright'], '</h3>
 		</div>
-		<div class="windowbg noup">
-			', $context['copyrights']['smf'], '
+		<div class="windowbg">
+			<span class="topslice"><span></span></span>
+			<div class="content">
+				<dl>
+					<dt><strong>', $txt['credits_forum'], '</strong></dt>', '
+					<dd>', $context['copyrights']['smf'];
+
+	echo '
+					</dd>
+				</dl>';
+
+	if (!empty($context['copyrights']['mods']))
+	{
+		echo '
+				<dl>
+					<dt><strong>', $txt['credits_modifications'], '</strong></dt>
+					<dd>', implode('</dd><dd>', $context['copyrights']['mods']), '</dd>
+				</dl>';
+	}
+
+	echo '
+			</div>
+			<span class="botslice"><span></span></span>
 		</div>
 	</div>';
 }
+?>

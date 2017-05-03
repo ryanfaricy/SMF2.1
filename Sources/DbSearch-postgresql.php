@@ -1,24 +1,35 @@
 <?php
 
 /**
- * This file contains database functions specific to search related activity.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.7
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- *  Add the file functions to the $smcFunc array.
- */
+/*	This file contains database functions specific to search related activity.
+
+	void db_search_init()
+		- adds the functions in this file to the $smcFunc array
+
+	boolean smf_db_search_support($search_type)
+		- whether this database type support the search type $search_type
+
+	void smf_db_create_word_search($size)
+ 		- create the custom word index table
+
+	resource smf_db_search_query($identifier, $db_string, $db_values = array(), $connection = null)
+		- returns the correct query for this search type.
+*/
+
+// Add the file functions to the $smcFunc array.
 function db_search_init()
 {
 	global $smcFunc;
@@ -30,44 +41,17 @@ function db_search_init()
 			'db_create_word_search' => 'smf_db_create_word_search',
 			'db_support_ignore' => false,
 		);
-
-	db_extend();
-
-	//pg 9.5 got ignore support
-	$version = $smcFunc['db_get_version']();
-	// if we got a Beta Version
-	if (stripos($version, 'beta') !== false)
-		$version = substr($version, 0, stripos($version, 'beta')).'.0';
-	// or RC
-	if (stripos($version, 'rc') !== false)
-		$version = substr($version, 0, stripos($version, 'rc')).'.0';
-
-	if (version_compare($version,'9.5.0','>='))
-		$smcFunc['db_support_ignore'] = true;
 }
 
-/**
- * This function will tell you whether this database type supports this search type.
- *
- * @param string $search_type The search type
- * @return boolean Whether or not the specified search type is supported by this DB system.
- */
+// Does this database type support this search type?
 function smf_db_search_support($search_type)
 {
-	$supported_types = array('custom','fulltext');
+	$supported_types = array('custom');
 
 	return in_array($search_type, $supported_types);
 }
 
-/**
- * Returns the correct query for this search type.
- *
- * @param string $identifier A query identifier
- * @param string $db_string The query text
- * @param array $db_values An array of values to pass to $smcFunc['db_query']
- * @param resource $connection The current DB connection resource
- * @return resource The query result resource from $smcFunc['db_query']
- */
+// Returns the correct query for this search type.
 function smf_db_search_query($identifier, $db_string, $db_values = array(), $connection = null)
 {
 	global $smcFunc;
@@ -79,9 +63,9 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 			'~ENGINE=MEMORY~i' => '',
 		),
 		'create_tmp_log_search_messages' => array(
-			'~mediumint\(\d\)~i' => 'int',
+			'~mediumint\(\d\)' => 'int',
 			'~unsigned~i' => '',
-			'~ENGINE=MEMORY~i' => '',
+			'~TYPE=HEAP~i' => '',
 		),
 		'drop_tmp_log_search_topics' => array(
 			'~IF\sEXISTS~i' => '',
@@ -90,14 +74,10 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 			'~IF\sEXISTS~i' => '',
 		),
 		'insert_into_log_messages_fulltext' => array(
-			'~LIKE~i' => 'iLIKE',
-			'~NOT\sLIKE~i' => '~NOT iLIKE',
 			'~NOT\sRLIKE~i' => '!~*',
 			'~RLIKE~i' => '~*',
 		),
 		'insert_log_search_results_subject' => array(
-			'~LIKE~i' => 'iLIKE',
-			'~NOT\sLIKE~i' => 'NOT iLIKE',
 			'~NOT\sRLIKE~i' => '!~*',
 			'~RLIKE~i' => '~*',
 		),
@@ -105,23 +85,12 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 
 	if (isset($replacements[$identifier]))
 		$db_string = preg_replace(array_keys($replacements[$identifier]), array_values($replacements[$identifier]), $db_string);
-	if (preg_match('~^\s*INSERT\sIGNORE~i', $db_string) != 0)
+	elseif (preg_match('~^\s*INSERT\sIGNORE~i', $db_string) != 0)
 	{
 		$db_string = preg_replace('~^\s*INSERT\sIGNORE~i', 'INSERT', $db_string);
-		if ($smcFunc['db_support_ignore']){
-			//pg style "INSERT INTO.... ON CONFLICT DO NOTHING"
-			$db_string = $db_string.' ON CONFLICT DO NOTHING';
-		}
-		else
-		{
-			// Don't error on multi-insert.
-			$db_values['db_error_skip'] = true;
-		}
+		// Don't error on multi-insert.
+		$db_values['db_error_skip'] = true;
 	}
-	
-	//fix double quotes
-	if ($identifier == 'insert_into_log_messages_fulltext')
-		$db_values = str_replace('"', "'", $db_values);
 
 	$return = $smcFunc['db_query']('', $db_string,
 		$db_values, $connection
@@ -130,11 +99,7 @@ function smf_db_search_query($identifier, $db_string, $db_values = array(), $con
 	return $return;
 }
 
-/**
- * Highly specific function, to create the custom word index table.
- *
- * @param string $size The column size type (int, mediumint (8), etc.). Not used here.
- */
+// Highly specific - create the custom word index table!
 function smf_db_create_word_search($size)
 {
 	global $smcFunc;
@@ -153,3 +118,5 @@ function smf_db_create_word_search($size)
 		)
 	);
 }
+
+?>

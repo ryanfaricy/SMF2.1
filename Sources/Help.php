@@ -1,56 +1,47 @@
 <?php
 
 /**
- * This file has the important job of taking care of help messages and the help center.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Redirect to the user help ;).
- * It loads information needed for the help section.
- * It is accessed by ?action=help.
- * @uses Help template and Manual language file.
- */
+/*	This file has the important job of taking care of help messages and the
+	help center.  It does this with two simple functions:
+
+	void ShowHelp()
+		- loads information needed for the help section.
+		- accesed by ?action=help.
+		- uses the Help template and Manual language file.
+
+	void ShowAdminHelp()
+		- shows a popup for administrative or user help.
+		- uses the help parameter to decide what string to display and where
+		  to get the string from. ($helptxt or $txt?)
+		- loads the ManagePermissions language file if the help starts with
+		  permissionhelp.
+		- uses the Help template, popup sub template, no layers.
+		- accessed via ?action=helpadmin;help=??.
+*/
+
+// Redirect to the user help ;).
 function ShowHelp()
-{
-	loadTemplate('Help');
-	loadLanguage('Manual');
-
-	$subActions = array(
-		'index' => 'HelpIndex',
-		'rules' => 'HelpRules',
-	);
-
-	// CRUD $subActions as needed.
-	call_integration_hook('integrate_manage_help', array(&$subActions));
-
-	$sa = isset($_GET['sa'], $subActions[$_GET['sa']]) ? $_GET['sa'] : 'index';
-	call_helper($subActions[$sa]);
-}
-
-/**
- * The main page for the Help section
- */
-function HelpIndex()
 {
 	global $scripturl, $context, $txt;
 
+	loadTemplate('Help');
+	loadLanguage('Manual');
+
 	// We need to know where our wiki is.
 	$context['wiki_url'] = 'http://wiki.simplemachines.org/smf';
-	$context['wiki_prefix'] = 'SMF2.1:';
-
-	$context['canonical_url'] = $scripturl . '?action=help';
 
 	// Sections were are going to link...
 	$context['manual_sections'] = array(
@@ -77,53 +68,7 @@ function HelpIndex()
 	$context['sub_template'] = 'manual';
 }
 
-/**
- * Displays forum rules
- */
-function HelpRules()
-{
-	global $context, $txt, $boarddir, $user_info, $scripturl;
-
-	// Build the link tree.
-	$context['linktree'][] = array(
-		'url' => $scripturl . '?action=help',
-		'name' => $txt['help'],
-	);
-	$context['linktree'][] = array(
-		'url' => $scripturl . '?action=help;sa=rules',
-		'name' => $txt['terms_and_rules'],
-	);
-
-	// Have we got a localized one?
-	if (file_exists($boarddir . '/agreement.' . $user_info['language'] . '.txt'))
-		$context['agreement'] = parse_bbc(file_get_contents($boarddir . '/agreement.' . $user_info['language'] . '.txt'), true, 'agreement_' . $user_info['language']);
-	elseif (file_exists($boarddir . '/agreement.txt'))
-		$context['agreement'] = parse_bbc(file_get_contents($boarddir . '/agreement.txt'), true, 'agreement');
-	else
-		$context['agreement'] = '';
-
-	// Nothing to show, so let's get out of here
-	if (empty($context['agreement']))
-	{
-		// No file found or a blank file! Just leave...
-		redirectexit();
-	}
-
-	$context['canonical_url'] = $scripturl . '?action=help;sa=rules';
-
-	$context['page_title'] = $txt['terms_and_rules'];
-	$context['sub_template'] = 'terms';
-}
-
-/**
- * Show some of the more detailed help to give the admin an idea...
- * It shows a popup for administrative or user help.
- * It uses the help parameter to decide what string to display and where to get
- * the string from. ($helptxt or $txt?)
- * It is accessed via ?action=helpadmin;help=?.
- * @uses ManagePermissions language file, if the help starts with permissionhelp.
- * @uses Help template, popup sub template, no layers.
- */
+// Show some of the more detailed help to give the admin an idea...
 function ShowAdminHelp()
 {
 	global $txt, $helptxt, $context, $scripturl;
@@ -142,9 +87,6 @@ function ShowAdminHelp()
 		loadLanguage('ManagePermissions');
 
 	loadTemplate('Help');
-
-	// Allow mods to load their own language file here
- 	call_integration_hook('integrate_helpadmin');
 
 	// Set the page title to something relevant.
 	$context['page_title'] = $context['forum_name'] . ' - ' . $txt['help'];
@@ -165,3 +107,5 @@ function ShowAdminHelp()
 	if (preg_match('~%([0-9]+\$)?s\?~', $context['help_text'], $match))
 		$context['help_text'] = sprintf($context['help_text'], $scripturl, $context['session_id'], $context['session_var']);
 }
+
+?>

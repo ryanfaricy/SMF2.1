@@ -1,34 +1,61 @@
 <?php
 
 /**
- * This file helps the administrator setting registration settings and policy
- * as well as allow the administrator to register new members themselves.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Entrance point for the registration center, it checks permissions and forwards
- * to the right function based on the subaction.
- * Accessed by ?action=admin;area=regcenter.
- * Requires either the moderate_forum or the admin_forum permission.
- *
- * @uses Login language file
- * @uses Register template.
- */
+/*	This file helps the administrator setting registration settings and policy
+	as well as allow the administrator to register new members themselves.
+
+	void RegCenter()
+		- entrance point for the registration center.
+		- accessed by ?action=admin;area=regcenter.
+		- requires either the moderate_forum or the admin_forum permission.
+		- loads the Login language file and the Register template.
+		- calls the right function based on the subaction.
+
+	void AdminRegister()
+		- a function to register a new member from the admin center.
+		- accessed by ?action=admin;area=regcenter;sa=register
+		- requires the moderate_forum permission.
+		- uses the admin_register sub template of the Register template.
+		- allows assigning a primary group to the member being registered.
+
+	void EditAgreement()
+		- allows the administrator to edit the registration agreement, and
+		  choose whether it should be shown or not.
+		- accessed by ?action=admin;area=regcenter;sa=agreement.
+		- uses the Admin template and the edit_agreement sub template.
+		- requires the admin_forum permission.
+		- uses the edit_agreement administration area.
+		- writes and saves the agreement to the agreement.txt file.
+
+	void SetReserve()
+		- set the names under which users are not allowed to register.
+		- accessed by ?action=admin;area=regcenter;sa=reservednames.
+		- requires the admin_forum permission.
+		- uses the reserved_words sub template of the Register template.
+
+	void ModifyRegistrationSettings()
+		- set general registration settings and Coppa compliance settings.
+		- accessed by ?action=admin;area=regcenter;sa=settings.
+		- requires the admin_forum permission.
+*/
+
+// Main handling function for the admin approval center
 function RegCenter()
 {
-	global $context, $txt;
+	global $modSettings, $context, $txt, $scripturl;
 
 	// Old templates might still request this.
 	if (isset($_REQUEST['sa']) && $_REQUEST['sa'] == 'browse')
@@ -37,7 +64,7 @@ function RegCenter()
 	$subActions = array(
 		'register' => array('AdminRegister', 'moderate_forum'),
 		'agreement' => array('EditAgreement', 'admin_forum'),
-		'reservednames' => array('SetReserved', 'admin_forum'),
+		'reservednames' => array('SetReserve', 'admin_forum'),
 		'settings' => array('ModifyRegistrationSettings', 'admin_forum'),
 	);
 
@@ -72,32 +99,18 @@ function RegCenter()
 		)
 	);
 
-	call_integration_hook('integrate_manage_registrations', array(&$subActions));
-
 	// Finally, get around to calling the function...
-	call_helper($subActions[$context['sub_action']][0]);
+	$subActions[$context['sub_action']][0]();
 }
 
-/**
- * This function allows the admin to register a new member by hand.
- * It also allows assigning a primary group to the member being registered.
- * Accessed by ?action=admin;area=regcenter;sa=register
- * Requires the moderate_forum permission.
- *
- * @uses Register template, admin_register sub-template.
- */
+// This function allows the admin to register a new member by hand.
 function AdminRegister()
 {
 	global $txt, $context, $sourcedir, $scripturl, $smcFunc;
 
-	// Are there any custom profile fields required during registration?
-	require_once($sourcedir . '/Profile.php');
-	loadCustomFields(0, 'register');
-
 	if (!empty($_POST['regSubmit']))
 	{
 		checkSession();
-		validateToken('admin-regc');
 
 		foreach ($_POST as $key => $value)
 			if (!is_array($_POST[$key]))
@@ -121,13 +134,6 @@ function AdminRegister()
 		$memberID = registerMember($regOptions);
 		if (!empty($memberID))
 		{
-			// We'll do custom fields after as then we get to use the helper function!
-			if (!empty($_POST['customfield']))
-			{
-				require_once($sourcedir . '/Profile-Modify.php');
-				makeCustomFieldChanges($memberID, 'register');
-			}
-
 			$context['new_member'] = array(
 				'id' => $memberID,
 				'name' => $_POST['user'],
@@ -138,6 +144,9 @@ function AdminRegister()
 		}
 	}
 
+	// Basic stuff.
+	$context['sub_template'] = 'admin_register';
+	$context['page_title'] = $txt['registration_center'];
 
 	// Load the assignable member groups.
 	if (allowedTo('manage_membergroups'))
@@ -167,27 +176,12 @@ function AdminRegister()
 	}
 	else
 		$context['member_groups'] = array();
-
-	// Basic stuff.
-	$context['sub_template'] = 'admin_register';
-	$context['page_title'] = $txt['registration_center'];
-	createToken('admin-regc');
-	loadJavaScriptFile('register.js', array('defer' => false), 'smf_register');
 }
 
-/**
- * Allows the administrator to edit the registration agreement, and choose whether
- * it should be shown or not. It writes and saves the agreement to the agreement.txt
- * file.
- * Accessed by ?action=admin;area=regcenter;sa=agreement.
- * Requires the admin_forum permission.
- *
- * @uses Admin template and the edit_agreement sub template.
- */
+// I hereby agree not to be a lazy bum.
 function EditAgreement()
 {
-	// I hereby agree not to be a lazy bum.
-	global $txt, $boarddir, $context, $modSettings, $smcFunc;
+	global $txt, $boarddir, $context, $modSettings, $smcFunc, $settings;
 
 	// By default we look at agreement.txt.
 	$context['current_agreement'] = '';
@@ -215,37 +209,25 @@ function EditAgreement()
 	if (isset($_POST['agreement']))
 	{
 		checkSession();
-		validateToken('admin-rega');
 
 		// Off it goes to the agreement file.
-		$to_write = str_replace("\r", '', $_POST['agreement']);
-		$bytes = file_put_contents($boarddir . '/agreement' . $context['current_agreement'] . '.txt', $to_write, LOCK_EX);
+		$fp = fopen($boarddir . '/agreement' . $context['current_agreement'] . '.txt', 'w');
+		fwrite($fp, str_replace("\r", '', $_POST['agreement']));
+		fclose($fp);
 
 		updateSettings(array('requireAgreement' => !empty($_POST['requireAgreement'])));
-
-		if ($bytes == strlen($to_write))
-			$context['saved_successful'] = true;
-		else
-			$context['could_not_save'] = true;
 	}
 
-	$context['agreement'] = file_exists($boarddir . '/agreement' . $context['current_agreement'] . '.txt') ? $smcFunc['htmlspecialchars'](file_get_contents($boarddir . '/agreement' . $context['current_agreement'] . '.txt')) : '';
+	$context['agreement'] = file_exists($boarddir . '/agreement' . $context['current_agreement'] . '.txt') ? htmlspecialchars(file_get_contents($boarddir . '/agreement' . $context['current_agreement'] . '.txt')) : '';
 	$context['warning'] = is_writable($boarddir . '/agreement' . $context['current_agreement'] . '.txt') ? '' : $txt['agreement_not_writable'];
 	$context['require_agreement'] = !empty($modSettings['requireAgreement']);
 
 	$context['sub_template'] = 'edit_agreement';
 	$context['page_title'] = $txt['registration_agreement'];
-	createToken('admin-rega');
 }
 
-/**
- * Set the names under which users are not allowed to register.
- * Accessed by ?action=admin;area=regcenter;sa=reservednames.
- * Requires the admin_forum permission.
- *
- * @uses Register template, reserved_words sub-template.
- */
-function SetReserved()
+// Set reserved names/words....
+function SetReserve()
 {
 	global $txt, $context, $modSettings;
 
@@ -253,7 +235,6 @@ function SetReserved()
 	if (!empty($_POST['save_reserved_names']))
 	{
 		checkSession();
-		validateToken('admin-regr');
 
 		// Set all the options....
 		updateSettings(array(
@@ -263,7 +244,6 @@ function SetReserved()
 			'reserveName' => (isset($_POST['matchname']) ? '1' : '0'),
 			'reserveNames' => str_replace("\r", '', $_POST['reserved'])
 		));
-		$context['saved_successful'] = true;
 	}
 
 	// Get the reserved word options and words.
@@ -278,18 +258,9 @@ function SetReserved()
 	// Ready the template......
 	$context['sub_template'] = 'edit_reserved_words';
 	$context['page_title'] = $txt['admin_reserved_set'];
-	createToken('admin-regr');
 }
 
-/**
- * This function handles registration settings, and provides a few pretty stats too while it's at it.
- * General registration settings and Coppa compliance settings.
- * Accessed by ?action=admin;area=regcenter;sa=settings.
- * Requires the admin_forum permission.
- *
- * @param bool $return_config Whether or not to return the config_vars array (used for admin search)
- * @return void|array Returns nothing or returns the $config_vars array if $return_config is true
- */
+// This function handles registration settings, and provides a few pretty stats too while it's at it.
 function ModifyRegistrationSettings($return_config = false)
 {
 	global $txt, $context, $scripturl, $modSettings, $sourcedir;
@@ -299,16 +270,16 @@ function ModifyRegistrationSettings($return_config = false)
 
 	$config_vars = array(
 			array('select', 'registration_method', array($txt['setting_registration_standard'], $txt['setting_registration_activate'], $txt['setting_registration_approval'], $txt['setting_registration_disabled'])),
+			array('check', 'enableOpenID'),
+			array('check', 'notify_new_registration'),
 			array('check', 'send_welcomeEmail'),
 		'',
-			array('int', 'coppaAge', 'subtext' => $txt['zero_to_disable'], 'onchange' => 'checkCoppa();', 'onkeyup' => 'checkCoppa();'),
+			array('int', 'coppaAge', 'subtext' => $txt['setting_coppaAge_desc'], 'onchange' => 'checkCoppa();'),
 			array('select', 'coppaType', array($txt['setting_coppaType_reject'], $txt['setting_coppaType_approval']), 'onchange' => 'checkCoppa();'),
 			array('large_text', 'coppaPost', 'subtext' => $txt['setting_coppaPost_desc']),
 			array('text', 'coppaFax'),
 			array('text', 'coppaPhone'),
 	);
-
-	call_integration_hook('integrate_modify_registration_settings', array(&$config_vars));
 
 	if ($return_config)
 		return $config_vars;
@@ -326,12 +297,10 @@ function ModifyRegistrationSettings($return_config = false)
 			fatal_lang_error('admin_setting_coppa_require_contact');
 
 		// Post needs to take into account line breaks.
-		$_POST['coppaPost'] = str_replace("\n", '<br>', empty($_POST['coppaPost']) ? '' : $_POST['coppaPost']);
-
-		call_integration_hook('integrate_save_registration_settings');
+		$_POST['coppaPost'] = str_replace("\n", '<br />', empty($_POST['coppaPost']) ? '' : $_POST['coppaPost']);
 
 		saveDBSettings($config_vars);
-		$_SESSION['adm-save'] = true;
+
 		redirectexit('action=admin;area=regcenter;sa=settings');
 	}
 
@@ -357,3 +326,5 @@ function ModifyRegistrationSettings($return_config = false)
 
 	prepareDBSettingContext($config_vars);
 }
+
+?>

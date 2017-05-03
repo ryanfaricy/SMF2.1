@@ -5,63 +5,36 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.12
  */
 
 // This won't be dedicated without this - this must exist in each gateway!
 // SMF Payment Gateway: paypal
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Class for returning available form data for this gateway
- */
 class paypal_display
 {
-	/**
-	 * @var string Name of this payment gateway
-	 */
 	public $title = 'PayPal';
 
-	/**
-	 * Return the admin settings for this gateway
-	 *
-	 * @return array An array of settings data
-	 */
 	public function getGatewaySettings()
 	{
 		global $txt;
 
+		/// We add email and additional emails (the latter for recurring payments)
 		$setting_data = array(
-			array(
-				'email', 'paypal_email',
-				'subtext' => $txt['paypal_email_desc'],
-				'size' => 60
-			),
-			array(
-				'email', 'paypal_additional_emails',
-				'subtext' => $txt['paypal_additional_emails_desc'],
-				'size' => 60
-			),
-			array(
-				'email', 'paypal_sandbox_email',
-				'subtext' => $txt['paypal_sandbox_email_desc'],
-				'size' => 60
-			),
+			array('text', 'paypal_email', 'subtext' => $txt['paypal_email_desc']),
+			array('text', 'paypal_additional_emails', 'subtext' =>  $txt['paypal_additional_emails_desc']),
 		);
 
 		return $setting_data;
 	}
 
-	/**
-	 * Is this enabled for new payments?
-	 *
-	 * @return boolean Whether this gateway is enabled (for PayPal, whether the PayPal email is set)
-	 */
+	// Is this enabled for new payments?
 	public function gatewayEnabled()
 	{
 		global $modSettings;
@@ -69,19 +42,7 @@ class paypal_display
 		return !empty($modSettings['paypal_email']);
 	}
 
-	/**
-	 * What do we want?
-	 *
-	 * Called from Profile-Actions.php to return a unique set of fields for the given gateway
-	 * plus all the standard ones for the subscription form
-	 *
-	 * @param string $unique_id The unique ID of this gateway
-	 * @param array $sub_data Subscription data
-	 * @param int|float $value The amount of the subscription
-	 * @param string $period
-	 * @param string $return_url The URL to return the user to after processing the payment
-	 * @return array An array of data for the form
-	 */
+	// What do we want?
 	public function fetchGatewayFields($unique_id, $sub_data, $value, $period, $return_url)
 	{
 		global $modSettings, $txt, $boardurl;
@@ -110,9 +71,6 @@ class paypal_display
 		$return_data['hidden']['src'] = 1;
 		$return_data['hidden']['notify_url'] = $boardurl . '/subscriptions.php';
 
-		// If possible let's use the language we know we need.
-		$return_data['hidden']['lc'] = !empty($txt['lang_paypal']) ? $txt['lang_paypal'] : 'US';
-
 		// Now stuff dependant on what we're doing.
 		if ($sub_data['flexible'])
 		{
@@ -129,10 +87,10 @@ class paypal_display
 			$return_data['hidden']['t3'] = $period;
 		}
 
-		// If it's repeatable do some javascript to respect this idea.
+		// If it's repeatable do soem javascript to respect this idea.
 		if (!empty($sub_data['repeatable']))
 			$return_data['javascript'] = '
-				document.write(\'<label for="do_paypal_recur"><input type="checkbox" name="do_paypal_recur" id="do_paypal_recur" checked onclick="switchPaypalRecur();" class="input_check">' . $txt['paid_make_recurring'] . '</label><br>\');
+				document.write(\'<label for="do_paypal_recur"><input type="checkbox" name="do_paypal_recur" id="do_paypal_recur" checked="checked" onclick="switchPaypalRecur();" class="input_check" />' . $txt['paid_make_recurring'] . '</label><br />\');
 
 				function switchPaypalRecur()
 				{
@@ -143,24 +101,17 @@ class paypal_display
 	}
 }
 
-/**
- * Class of functions to validate a IPN response and provide details of the payment
- */
 class paypal_payment
 {
 	private $return_data;
 
-	/**
-	 * This function returns true/false for whether this gateway thinks the data is intended for it.
-	 *
-	 * @return boolean Whether this gateway things the data is valid
-	 */
+	// This function returns true/false for whether this gateway thinks the data is intended for it.
 	public function isValid()
 	{
 		global $modSettings;
 
 		// Has the user set up an email address?
-		if ((empty($modSettings['paidsubs_test']) && empty($modSettings['paypal_email'])) || (!empty($modSettings['paidsubs_test']) && empty($modSettings['paypal_sandbox_email'])))
+		if (empty($modSettings['paypal_email']))
 			return false;
 		// Check the correct transaction types are even here.
 		if ((!isset($_POST['txn_type']) && !isset($_POST['payment_status'])) || (!isset($_POST['business']) && !isset($_POST['receiver_email'])))
@@ -168,25 +119,12 @@ class paypal_payment
 		// Correct email address?
 		if (!isset($_POST['business']))
 			$_POST['business'] = $_POST['receiver_email'];
-
-		// Are we testing?
-		if (empty($modSettings['paidsubs_test']) && strtolower($modSettings['paypal_sandbox_email']) != strtolower($_POST['business']) && (empty($modSettings['paypal_additional_emails']) || !in_array(strtolower($_POST['business']), explode(',', strtolower($modSettings['paypal_additional_emails'])))))
-			return false;
-		elseif (strtolower($modSettings['paypal_email']) != strtolower($_POST['business']) && (empty($modSettings['paypal_additional_emails']) || !in_array(strtolower($_POST['business']), explode(',', $modSettings['paypal_additional_emails']))))
+		if (strtolower($modSettings['paypal_email']) != strtolower($_POST['business']) && (empty($modSettings['paypal_additional_emails']) || !in_array(strtolower($_POST['business']), explode(',', strtolower($modSettings['paypal_additional_emails'])))))
 			return false;
 		return true;
 	}
 
-	/**
-	 * Post the IPN data received back to paypal for validation
-	 * Sends the complete unaltered message back to PayPal. The message must contain the same fields
-	 * in the same order and be encoded in the same way as the original message
-	 * PayPal will respond back with a single word, which is either VERIFIED if the message originated with PayPal or INVALID
-	 *
-	 * If valid returns the subscription and member IDs we are going to process if it passes
-	 *
-	 * @return string A string containing the subscription ID and member ID, separated by a +
-	 */
+	// Validate all the data was valid.
 	public function precheck()
 	{
 		global $modSettings, $txt;
@@ -198,19 +136,18 @@ class paypal_payment
 		// Build the request string - starting with the minimum requirement.
 		$requestString = 'cmd=_notify-validate';
 
-		// Now my dear, add all the posted bits in the order we got them
+		// Now my dear, add all the posted bits.
 		foreach ($_POST as $k => $v)
 			$requestString .= '&' . $k . '=' . urlencode($v);
 
 		// Can we use curl?
-		if (function_exists('curl_init') && $curl = curl_init((!empty($modSettings['paidsubs_test']) ? 'https://www.sandbox.' : 'http://www.') . 'paypal.com/cgi-bin/webscr'))
+				if (function_exists('curl_init') && $curl = curl_init((!empty($modSettings['paidsubs_test']) ? 'https://www.sandbox.' : 'https://www.') . 'paypal.com/cgi-bin/webscr'))
 		{
 			// Set the post data.
 			curl_setopt($curl, CURLOPT_POST, true);
 			curl_setopt($curl, CURLOPT_POSTFIELDSIZE, 0);
 			curl_setopt($curl, CURLOPT_POSTFIELDS, $requestString);
 
-			// Set up the headers so paypal will accept the post
 			curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
 			curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 1);
 			curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
@@ -243,7 +180,7 @@ class paypal_payment
 			if (!empty($modSettings['paidsubs_test']))
 				$fp = fsockopen('ssl://www.sandbox.paypal.com', 443, $errno, $errstr, 30);
 			else
-				$fp = fsockopen('www.paypal.com', 80, $errno, $errstr, 30);
+				$fp = fsockopen('ssl://www.paypal.com', 443, $errno, $errstr, 30);
 
 			// Did it work?
 			if (!$fp)
@@ -256,7 +193,7 @@ class paypal_payment
 			while (!feof($fp))
 			{
 				$this->return_data = fgets($fp, 1024);
-				if (strcmp(trim($this->return_data), 'VERIFIED') === 0)
+				if (strcmp(trim($this->return_data), 'VERIFIED') == 0)
 					break;
 			}
 
@@ -265,23 +202,21 @@ class paypal_payment
 		}
 
 		// If this isn't verified then give up...
-		if (strcmp(trim($this->return_data), 'VERIFIED') !== 0)
+		// !! This contained a comment "send an email", but we don't appear to send any?
+		if (strcmp(trim($this->return_data), 'VERIFIED') != 0)
 			exit;
 
 		// Check that this is intended for us.
 		if (strtolower($modSettings['paypal_email']) != strtolower($_POST['business']) && (empty($modSettings['paypal_additional_emails']) || !in_array(strtolower($_POST['business']), explode(',', strtolower($modSettings['paypal_additional_emails'])))))
 			exit;
 
-		// Is this a subscription - and if so is it a secondary payment that we need to process?
-		// If so, make sure we get it in the expected format. Seems PayPal sometimes sends it without urlencoding.
-		if (!empty($_POST['item_number']) && strpos($_POST['item_number'], ' ') !== false)
-			$_POST['item_number'] = str_replace(' ', '+', $_POST['item_number']);
+		// Is this a subscription - and if so it's it a secondary payment that we need to process?
 		if ($this->isSubscription() && (empty($_POST['item_number']) || strpos($_POST['item_number'], '+') === false))
 			// Calculate the subscription it relates to!
 			$this->_findSubscription();
 
 		// Verify the currency!
-		if (strtolower($_POST['mc_currency']) !== strtolower($modSettings['paid_currency_code']))
+		if (strtolower($_POST['mc_currency']) != strtolower($modSettings['paid_currency_code']))
 			exit;
 
 		// Can't exist if it doesn't contain anything.
@@ -292,90 +227,40 @@ class paypal_payment
 		return explode('+', $_POST['item_number']);
 	}
 
-	/**
-	 * Is this a refund?
-	 *
-	 * @return boolean Whether this is a refund
-	 */
+	// Is this a refund?
 	public function isRefund()
 	{
-		if ($_POST['payment_status'] === 'Refunded' || $_POST['payment_status'] === 'Reversed' || $_POST['txn_type'] === 'Refunded' || ($_POST['txn_type'] === 'reversal' && $_POST['payment_status'] === 'Completed'))
+		if ($_POST['payment_status'] == 'Refunded' || $_POST['payment_status'] == 'Reversed' || $_POST['txn_type'] == 'Refunded' || ($_POST['txn_type'] == 'reversal' && $_POST['payment_status'] == 'Completed'))
 			return true;
 		else
 			return false;
 	}
 
-	/**
-	 * Is this a subscription?
-	 *
-	 * @return boolean Whether this is a subscription
-	 */
+	// Is this a subscription?
 	public function isSubscription()
 	{
-		if (substr($_POST['txn_type'], 0, 14) === 'subscr_payment' && $_POST['payment_status'] === 'Completed')
+		if (substr($_POST['txn_type'], 0, 14) == 'subscr_payment' && $_POST['payment_status'] == 'Completed')
 			return true;
 		else
 			return false;
 	}
 
-	/**
-	 * Is this a normal payment?
-	 *
-	 * @return boolean Whether this is a normal payment
-	 */
+	// Is this a normal payment?
 	public function isPayment()
 	{
-		if ($_POST['payment_status'] === 'Completed' && $_POST['txn_type'] === 'web_accept')
+		if ($_POST['payment_status'] == 'Completed' && $_POST['txn_type'] == 'web_accept')
 			return true;
 		else
 			return false;
 	}
 
-	/**
-	 * Is this a cancellation?
-	 *
-	 * @return boolean Whether this is a cancellation
-	 */
-	public function isCancellation()
-	{
-		// subscr_cancel is sent when the user cancels, subscr_eot is sent when the subscription reaches final payment
-		// Neither require us to *do* anything as per performCancel().
-		// subscr_eot, if sent, indicates an end of payments term.
-		if (substr($_POST['txn_type'], 0, 13) === 'subscr_cancel' || substr($_POST['txn_type'], 0, 10) === 'subscr_eot')
-			return true;
-		else
-			return false;
-	}
-
-	/**
-	 * Things to do in the event of a cancellation
-	 *
-	 * @param string $subscription_id
-	 * @param int $member_id
-	 * @param array $subscription_info
-	 */
-	public function performCancel($subscription_id, $member_id, $subscription_info)
-	{
-		// PayPal doesn't require SMF to notify it every time the subscription is up for renewal.
-		// A cancellation should not cause the user to be immediately dropped from their subscription, but
-		// let it expire normally. Some systems require taking action in the database to deal with this, but
-		// PayPal does not, so we actually just do nothing. But this is a nice prototype/example just in case.
-	}
-
-	/**
-	 * How much was paid?
-	 *
-	 * @return float The amount paid
-	 */
+	// How much was paid?
 	public function getCost()
 	{
 		return (isset($_POST['tax']) ? $_POST['tax'] : 0) + $_POST['mc_gross'];
 	}
 
-	/**
-	 * Record the transaction reference and exit
-	 *
-	 */
+	// exit.
 	public function close()
 	{
 		global $smcFunc, $subscription_id;
@@ -398,12 +283,7 @@ class paypal_payment
 		exit();
 	}
 
-	/**
-	 * A private function to find out the subscription details.
-	 *
-	 * @access private
-	 * @return boolean|void False on failure, otherwise just sets $_POST['item_number']
-	 */
+	// A private function to find out the subscription details.
 	private function _findSubscription()
 	{
 		global $smcFunc;
@@ -439,7 +319,7 @@ class paypal_payment
 						'payer_email' => $_POST['payer_email'],
 					)
 				);
-				if ($smcFunc['db_num_rows']($request) === 0)
+				if ($smcFunc['db_num_rows']($request) == 0)
 					return false;
 			}
 			else
@@ -450,3 +330,5 @@ class paypal_payment
 		$smcFunc['db_free_result']($request);
 	}
 }
+
+?>

@@ -1,30 +1,92 @@
 <?php
 
 /**
- * This file provides compatibility functions and code for older versions of
- * PHP, such as the sha1() function, missing extensions, or 64-bit vs 32-bit
- * systems. It is only included for those older versions or when the respective
- * extension or function cannot be found.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
+/*	This file provides compatibility functions and code for older versions of
+	PHP, such as the sha1() function.  It is only included for those older
+	versions.
+*/
 
-/**
- * Define the old SMF sha1 function. Uses mhash if available
- * @param string $str The string
- * @return string The sha1 hashed version of $str
- */
+if (!function_exists('stripos'))
+{
+	function stripos($haystack, $needle, $offset = 0)
+	{
+		return strpos(strtolower($haystack), strtolower($needle), $offset);
+	}
+}
+
+if (!function_exists('md5_file'))
+{
+	function md5_file($filename)
+	{
+		// This isn't the most efficient way in the world, but then we don't have MD5_CTX do we?
+		return md5(file_get_contents($filename));
+	}
+}
+
+// Split a string into an array.
+if (!function_exists('str_split'))
+{
+	function str_split($str, $str_length = 1)
+	{
+		if ($str_length < 1)
+			return false;
+
+		// This could be shorter but isn't because short solutions can fail!
+		$str_array = array();
+		$count = 0;
+
+		while (1 == 1)
+		{
+			if ($count >= strlen($str))
+				break;
+
+			$str_array[] = substr($str, $count, $str_length);
+			$count += $str_length;
+		}
+
+		return $str_array;
+	}
+}
+
+if (!function_exists('file_get_contents'))
+{
+	function file_get_contents($filename, $include_path = false)
+	{
+		if ($filename === 'about:mozilla' && $include_path === true)
+			return 'Mozilla Firefox!';
+
+		$fp = fopen($filename, 'rb', $include_path);
+		if ($fp == false)
+			return false;
+
+		if (is_file($filename))
+			$data = fread($fp, filesize($filename));
+		else
+		{
+			$data = '';
+			while (!feof($fp))
+				$data .= fread($fp, 8192);
+		}
+		fclose($fp);
+
+		return $data;
+	}
+}
+
+// Define the old SMF sha1 function.
 function sha1_smf($str)
 {
 	// If we have mhash loaded in, use it instead!
@@ -42,12 +104,7 @@ function sha1_smf($str)
 	return sha1_core($blks, strlen($str) * 8);
 }
 
-/**
- * This is the core SHA-1 calculation routine, used by sha1().
- * @param string $x
- * @param int $len
- * @return string
- */
+// This is the core SHA-1 calculation routine, used by sha1().
 function sha1_core($x, $len)
 {
 	@$x[$len >> 5] |= 0x80 << (24 - $len % 32);
@@ -93,14 +150,6 @@ function sha1_core($x, $len)
 	return sprintf('%08x%08x%08x%08x%08x', $a, $b, $c, $d, $e);
 }
 
-/**
- * Helper function for the core SHA-1 calculation
- * @param int $t
- * @param int $b
- * @param int $c
- * @param int $d
- * @return int
- */
 function sha1_ft($t, $b, $c, $d)
 {
 	if ($t < 20)
@@ -113,22 +162,11 @@ function sha1_ft($t, $b, $c, $d)
 	return $b ^ $c ^ $d;
 }
 
-/**
- * Helper function for the core SHA-1 calculation
- * @param int $t
- * @return int 1518500249, 1859775393, -1894007588 or -899497514 depending on the value of $t
- */
 function sha1_kt($t)
 {
 	return $t < 20 ? 1518500249 : ($t < 40 ? 1859775393 : ($t < 60 ? -1894007588 : -899497514));
 }
 
-/**
- * Helper function for the core SHA-1 calculation
- * @param int $num
- * @param int $cnt
- * @return int
- */
 function sha1_rol($num, $cnt)
 {
 	// Unfortunately, PHP uses unsigned 32-bit longs only.  So we have to kludge it a bit.
@@ -140,39 +178,65 @@ function sha1_rol($num, $cnt)
 	return ($num << $cnt) | $a;
 }
 
-/**
- * Available since: (PHP 5)
- * If the optional raw_output is set to TRUE, then the sha1 digest is instead returned in raw binary format with a length of 20,
- * otherwise the returned value is a 40-character hexadecimal number.
- * @param string $text The text to hash
- * @return string The sha1 hash of $text
- */
-function sha1_raw($text)
+// Still on old PHP - bad boy! (the built in one would be faster.)
+if (!function_exists('sha1'))
 {
-	return sha1($text, true);
+	function sha1($str)
+	{
+		return sha1_smf($str);
+	}
 }
 
-/**
- * Compatibility function.
- * crc32 doesn't work as expected on 64-bit functions - make our own.
- * http://www.php.net/crc32#79567
- * @param string $number
- * @return string The crc32 polynomial of $number
- */
-if (!function_exists('smf_crc32'))
+if (!function_exists('array_combine'))
 {
-	function smf_crc32($number)
+	function array_combine($keys, $values)
 	{
-		$crc = crc32($number);
-
-		if ($crc & 0x80000000)
+		$ret = array();
+		if (($array_error = !is_array($keys) || !is_array($values)) || empty($values) || ($count=count($keys)) != count($values))
 		{
-			$crc ^= 0xffffffff;
-			$crc += 1;
-			$crc = -$crc;
+			trigger_error('array_combine(): Both parameters should be non-empty arrays with an equal number of elements', E_USER_WARNING);
+
+			if ($array_error)
+				return;
+			return false;
 		}
 
-		return $crc;
+		// Ensure that both arrays aren't associative arrays.
+		$keys = array_values($keys);
+		$values = array_values($values);
+
+		for ($i=0; $i < $count; $i++)
+			$ret[$keys[$i]] = $values[$i];
+
+		return $ret;
+	}
+}
+
+if (!function_exists('array_diff_key'))
+{
+	function array_diff_key()
+	{
+		$arrays = func_get_args();
+		$result = array_shift($arrays);
+		foreach ($arrays as $array)
+		{
+			foreach ($result as $key => $v)
+			{
+				if (array_key_exists($key, $array))
+				{
+					unset($result[$key]);
+				}
+			}
+		}
+		return $result;
+	}
+}
+
+if (!function_exists('mysql_real_escape_string'))
+{
+	function mysql_real_escape_string($string, $connection = null)
+	{
+		return mysql_escape_string($string);
 	}
 }
 

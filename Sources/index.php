@@ -1,8 +1,6 @@
 <?php
 
-/**
- * This file is here solely to protect your Sources directory.
- */
+// This file is here solely to protect your Sources directory.
 
 // Look for Settings.php....
 if (file_exists(dirname(dirname(__FILE__)) . '/Settings.php'))
@@ -14,3 +12,5 @@ if (file_exists(dirname(dirname(__FILE__)) . '/Settings.php'))
 // Can't find it... just forget it.
 else
 	exit;
+
+?>

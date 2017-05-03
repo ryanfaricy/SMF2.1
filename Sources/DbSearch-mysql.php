@@ -1,24 +1,33 @@
 <?php
 
 /**
- * This file contains database functions specific to search related activity.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- *  Add the file functions to the $smcFunc array.
- */
+/*	This file contains database functions specific to search related activity.
+
+	void db_search_init()
+		- adds the functions in this file to the $smcFunc array
+
+	boolean smf_db_search_support($search_type)
+		- whether this database type support the search type $search_type
+
+	void smf_db_create_word_search($size)
+ 		- create the custom word index table
+
+*/
+
+// Add the file functions to the $smcFunc array.
 function db_search_init()
 {
 	global $smcFunc;
@@ -32,12 +41,7 @@ function db_search_init()
 		);
 }
 
-/**
- * This function will tell you whether this database type supports this search type.
- *
- * @param string $search_type The search type.
- * @return boolean Whether or not the specified search type is supported by this db system
- */
+// Does this database type support this search type?
 function smf_db_search_support($search_type)
 {
 	$supported_types = array('fulltext');
@@ -45,11 +49,7 @@ function smf_db_search_support($search_type)
 	return in_array($search_type, $supported_types);
 }
 
-/**
- * Highly specific function, to create the custom word index table.
- *
- * @param string $size The size of the desired index.
- */
+// Highly specific - create the custom word index table!
 function smf_db_create_word_search($size)
 {
 	global $smcFunc;
@@ -73,3 +73,5 @@ function smf_db_create_word_search($size)
 		)
 	);
 }
+
+?>

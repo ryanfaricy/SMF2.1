@@ -1,32 +1,94 @@
 <?php
 
 /**
- * ManagePermissions handles all possible permission stuff.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Dispatches to the right function based on the given subaction.
- * Checks the permissions, based on the sub-action.
- * Called by ?action=managepermissions.
- *
- * @uses ManagePermissions language file.
- */
+/*	ManagePermissions handles all possible permission stuff. The following
+	functions are used:
+
+	void ModifyPermissions()
+		- calls the right function based on the given subaction.
+		- checks the permissions, based on the sub-action.
+		- called by ?action=managepermissions.
+		- loads the ManagePermissions language file.
+
+	void PermissionIndex()
+		- sets up the permissions by membergroup index page.
+		- called by ?action=managepermissions
+		- uses the permission_index template of the ManageBoards template.
+		- loads the ManagePermissions language and template.
+		- creates an array of all the groups with the number of members and permissions.
+
+	void SetQuickGroups()
+		- handles permission modification actions from the upper part of the
+		  permission manager index.
+		// !!!
+
+	void ModifyMembergroup()
+		// !!!
+
+	void ModifyMembergroup2()
+		// !!!
+
+	void GeneralPermissionSettings()
+		- a screen to set some general settings for permissions.
+
+	void setPermissionLevel(string level, int group, int profile = 'null')
+		- internal function to modify permissions to a pre-defined profile.
+		// !!!
+
+	void loadAllPermissions()
+		- internal function to load permissions into $context['permissions'].
+		// !!!
+
+	void loadPermissionProfiles()
+		// !!!
+
+	void EditPermissionProfiles()
+		// !!!
+
+	void init_inline_permissions(array permissions)
+		- internal function to initialise the inline permission settings.
+		- loads the ManagePermissions language and template.
+		- loads a context variables for each permission.
+		- used by several settings screens to set specific permissions.
+
+	void theme_inline_permissions(string permission)
+		- function called by templates to show a list of permissions settings.
+		- calls the template function template_inline_permissions().
+
+	save_inline_permissions(array permissions)
+		- general function to save the inline permissions sent by a form.
+		- does no session check.
+
+	void updateChildPermissions(array parent, int profile = null)
+		// !!!
+
+	void loadIllegalPermissions()
+		// !!!
+
+	void loadIllegalGuestPermissions()
+		- loads the permissions that can not be given to guests.
+		- stores the permissions in $context['non_guest_permissions'].
+
+	void ModifyPostModeration()
+		// !!!
+*/
 
 function ModifyPermissions()
 {
-	global $txt, $context;
+	global $txt, $scripturl, $context;
 
 	loadLanguage('ManagePermissions+ManageMembers');
 	loadTemplate('ManagePermissions');
@@ -44,7 +106,7 @@ function ModifyPermissions()
 		'settings' => array('GeneralPermissionSettings', 'admin_forum'),
 	);
 
-	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) && empty($subActions[$_REQUEST['sa']]['disabled']) ? $_REQUEST['sa'] : (allowedTo('manage_permissions') ? 'index' : 'settings');
+	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : (allowedTo('manage_permissions') ? 'index' : 'settings');
 	isAllowedTo($subActions[$_REQUEST['sa']][1]);
 
 	// Create the tabs for the template.
@@ -71,20 +133,9 @@ function ModifyPermissions()
 		),
 	);
 
-	call_integration_hook('integrate_manage_permissions', array(&$subActions));
-
-	call_helper($subActions[$_REQUEST['sa']][0]);
+	$subActions[$_REQUEST['sa']][0]();
 }
 
-/**
- * Sets up the permissions by membergroup index page.
- * Called by ?action=managepermissions
- * Creates an array of all the groups with the number of members and permissions.
- *
- * @uses ManagePermissions language file.
- * @uses ManagePermissions template file.
- * @uses ManageBoards template, permission_index sub-template.
- */
 function PermissionIndex()
 {
 	global $txt, $scripturl, $context, $settings, $modSettings, $smcFunc;
@@ -123,10 +174,9 @@ function PermissionIndex()
 			'can_search' => false,
 			'href' => '',
 			'link' => '',
-			'help' => 'membergroup_guests',
 			'is_post_group' => false,
 			'color' => '',
-			'icons' => '',
+			'stars' => '',
 			'children' => array(),
 			'num_permissions' => array(
 				'allowed' => 0,
@@ -143,10 +193,9 @@ function PermissionIndex()
 			'allow_modify' => true,
 			'can_search' => false,
 			'href' => $scripturl . '?action=moderate;area=viewgroups;sa=members;group=0',
-			'help' => 'membergroup_regular_members',
 			'is_post_group' => false,
 			'color' => '',
-			'icons' => '',
+			'stars' => '',
 			'children' => array(),
 			'num_permissions' => array(
 				'allowed' => 0,
@@ -161,7 +210,7 @@ function PermissionIndex()
 
 	// Query the database defined membergroups.
 	$query = $smcFunc['db_query']('', '
-		SELECT id_group, id_parent, group_name, min_posts, online_color, icons
+		SELECT id_group, id_parent, group_name, min_posts, online_color, stars
 		FROM {db_prefix}membergroups' . (empty($modSettings['permission_enable_postgroups']) ? '
 		WHERE min_posts = {int:min_posts}' : '') . '
 		ORDER BY id_parent = {int:not_inherited} DESC, min_posts, CASE WHEN id_group < {int:newbie_group} THEN id_group ELSE 4 END, group_name',
@@ -181,7 +230,7 @@ function PermissionIndex()
 			continue;
 		}
 
-		$row['icons'] = explode('#', $row['icons']);
+		$row['stars'] = explode('#', $row['stars']);
 		$context['groups'][$row['id_group']] = array(
 			'id' => $row['id_group'],
 			'name' => $row['group_name'],
@@ -190,10 +239,9 @@ function PermissionIndex()
 			'allow_modify' => $row['id_group'] > 1,
 			'can_search' => $row['id_group'] != 3,
 			'href' => $scripturl . '?action=moderate;area=viewgroups;sa=members;group=' . $row['id_group'],
-			'help' => $row['id_group'] == 1 ? 'membergroup_administrator' : ($row['id_group'] == 3 ? 'membergroup_moderator' : ''),
 			'is_post_group' => $row['min_posts'] != -1,
 			'color' => empty($row['online_color']) ? '' : $row['online_color'],
-			'icons' => !empty($row['icons'][0]) && !empty($row['icons'][1]) ? str_repeat('<img src="' . $settings['images_url'] . '/' . $row['icons'][1] . '" alt="*">', $row['icons'][0]) : '',
+			'stars' => !empty($row['stars'][0]) && !empty($row['stars'][1]) ? str_repeat('<img src="' . $settings['images_url'] . '/' . $row['stars'][1] . '" alt="*" />', $row['stars'][0]) : '',
 			'children' => array(),
 			'num_permissions' => array(
 				'allowed' => $row['id_group'] == 1 ? '(' . $txt['permissions_all'] . ')' : 0,
@@ -339,15 +387,11 @@ function PermissionIndex()
 
 	// Load the proper template.
 	$context['sub_template'] = 'permission_index';
-	createToken('admin-mpq');
 }
 
-/**
- * Handle permissions by board... more or less. :P
- */
 function PermissionByBoard()
 {
-	global $context, $txt, $smcFunc, $sourcedir, $cat_tree, $boardList, $boards;
+	global $context, $modSettings, $txt, $smcFunc, $sourcedir, $cat_tree, $boardList, $boards;
 
 	$context['page_title'] = $txt['permissions_boards'];
 	$context['edit_all'] = isset($_GET['edit']);
@@ -356,12 +400,11 @@ function PermissionByBoard()
 	if (!empty($_POST['save_changes']) && !empty($_POST['boardprofile']))
 	{
 		checkSession('request');
-		validateToken('admin-mpb');
 
 		$changes = array();
-		foreach ($_POST['boardprofile'] as $pBoard => $profile)
+		foreach ($_POST['boardprofile'] as $board => $profile)
 		{
-			$changes[(int) $profile][] = (int) $pBoard;
+			$changes[(int) $profile][] = (int) $board;
 		}
 
 		if (!empty($changes))
@@ -415,19 +458,13 @@ function PermissionByBoard()
 	}
 
 	$context['sub_template'] = 'by_board';
-	createToken('admin-mpb');
 }
 
-/**
- * Handles permission modification actions from the upper part of the
- * permission manager index.
- */
 function SetQuickGroups()
 {
 	global $context, $smcFunc;
 
 	checkSession();
-	validateToken('admin-mpq', 'quick');
 
 	loadIllegalPermissions();
 	loadIllegalGuestPermissions();
@@ -680,25 +717,33 @@ function SetQuickGroups()
 	redirectexit('action=admin;area=permissions;pid=' . $_REQUEST['pid']);
 }
 
-/**
- * Initializes the necessary to modify a membergroup's permissions.
- */
 function ModifyMembergroup()
 {
-	global $context, $txt, $smcFunc, $modSettings;
+	global $context, $txt, $modSettings, $smcFunc, $sourcedir;
 
 	if (!isset($_GET['group']))
 		fatal_lang_error('no_access', false);
 
 	$context['group']['id'] = (int) $_GET['group'];
 
+	// Are they toggling the view?
+	if (isset($_GET['view']))
+	{
+		$context['admin_preferences']['pv'] = $_GET['view'] == 'classic' ? 'classic' : 'simple';
+
+		// Update the users preferences.
+		require_once($sourcedir . '/Subs-Admin.php');
+		updateAdminPreferences();
+	}
+
+	$context['view_type'] = !empty($context['admin_preferences']['pv']) && $context['admin_preferences']['pv'] == 'classic' ? 'classic' : 'simple';
+
 	// It's not likely you'd end up here with this setting disabled.
 	if ($_GET['group'] == 1)
 		redirectexit('action=admin;area=permissions');
 
-	loadAllPermissions();
+	loadAllPermissions($context['view_type']);
 	loadPermissionProfiles();
-	$context['hidden_perms'] = array();
 
 	if ($context['group']['id'] > 0)
 	{
@@ -798,57 +843,33 @@ function ModifyMembergroup()
 				{
 					// Create a shortcut for the current permission.
 					$curPerm = &$context['permissions'][$permissionType]['columns'][$position][$permissionGroup]['permissions'][$perm['id']];
-
-					if ($perm['has_own_any'])
+					if ($tmp['view'] == 'classic')
 					{
-						$curPerm['any']['select'] = in_array($perm['id'] . '_any', $permissions[$permissionType]['allowed']) ? 'on' : (in_array($perm['id'] . '_any', $permissions[$permissionType]['denied']) ? 'deny' : 'off');
-						$curPerm['own']['select'] = in_array($perm['id'] . '_own', $permissions[$permissionType]['allowed']) ? 'on' : (in_array($perm['id'] . '_own', $permissions[$permissionType]['denied']) ? 'deny' : 'off');
+						if ($perm['has_own_any'])
+						{
+							$curPerm['any']['select'] = in_array($perm['id'] . '_any', $permissions[$permissionType]['allowed']) ? 'on' : (in_array($perm['id'] . '_any', $permissions[$permissionType]['denied']) ? 'denied' : 'off');
+							$curPerm['own']['select'] = in_array($perm['id'] . '_own', $permissions[$permissionType]['allowed']) ? 'on' : (in_array($perm['id'] . '_own', $permissions[$permissionType]['denied']) ? 'denied' : 'off');
+						}
+						else
+							$curPerm['select'] = in_array($perm['id'], $permissions[$permissionType]['denied']) ? 'denied' : (in_array($perm['id'], $permissions[$permissionType]['allowed']) ? 'on' : 'off');
 					}
 					else
-						$curPerm['select'] = in_array($perm['id'], $permissions[$permissionType]['denied']) ? 'deny' : (in_array($perm['id'], $permissions[$permissionType]['allowed']) ? 'on' : 'off');
-
-						// Keep the last value if it's hidden.
-						if ($perm['hidden'] || $permissionArray['hidden'])
-						{
-							if ($perm['has_own_any'])
-							{
-								$context['hidden_perms'][] = array(
-									$permissionType,
-									$perm['own']['id'],
-									$curPerm['own']['select'] == 'deny' && !empty($modSettings['permission_enable_deny']) ? 'deny' : $curPerm['own']['select'],
-								);
-								$context['hidden_perms'][] = array(
-									$permissionType,
-									$perm['any']['id'],
-									$curPerm['any']['select'] == 'deny' && !empty($modSettings['permission_enable_deny']) ? 'deny' : $curPerm['any']['select'],
-								);
-							}
-							else
-								$context['hidden_perms'][] = array(
-									$permissionType,
-									$perm['id'],
-									$curPerm['select'] == 'deny' && !empty($modSettings['permission_enable_deny']) ? 'deny' : $curPerm['select'],
-								);
-						}
+					{
+						$curPerm['select'] = in_array($perm['id'], $permissions[$permissionType]['denied']) ? 'denied' : (in_array($perm['id'], $permissions[$permissionType]['allowed']) ? 'on' : 'off');
+					}
 				}
 			}
 		}
 	}
 	$context['sub_template'] = 'modify_group';
 	$context['page_title'] = $txt['permissions_modify_group'];
-
-	createToken('admin-mp');
 }
 
-/**
- * This function actually saves modifications to a membergroup's board permissions.
- */
 function ModifyMembergroup2()
 {
-	global $smcFunc, $context;
+	global $modSettings, $smcFunc, $context;
 
 	checkSession();
-	validateToken('admin-mp');
 
 	loadIllegalPermissions();
 
@@ -965,12 +986,7 @@ function ModifyMembergroup2()
 	redirectexit('action=admin;area=permissions;pid=' . $_GET['pid']);
 }
 
-/**
- * A screen to set some general settings for permissions.
- *
- * @param bool $return_config Whether to return the $config_vars array (used for admin search)
- * @return void|array Returns nothing or returns the config_vars array if $return_config is true
- */
+// Screen for modifying general permission settings.
 function GeneralPermissionSettings($return_config = false)
 {
 	global $context, $modSettings, $sourcedir, $txt, $scripturl, $smcFunc;
@@ -985,8 +1001,6 @@ function GeneralPermissionSettings($return_config = false)
 			array('check', 'permission_enable_deny', 0, $txt['permission_settings_enable_deny'], 'help' => 'permissions_deny'),
 			array('check', 'permission_enable_postgroups', 0, $txt['permission_settings_enable_postgroups'], 'help' => 'permissions_postgroups'),
 	);
-
-	call_integration_hook('integrate_modify_permission_settings', array(&$config_vars));
 
 	if ($return_config)
 		return $config_vars;
@@ -1004,8 +1018,7 @@ function GeneralPermissionSettings($return_config = false)
 	// Saving the settings?
 	if (isset($_GET['save']))
 	{
-		checkSession();
-		call_integration_hook('integrate_save_permission_settings');
+		checkSession('post');
 		saveDBSettings($config_vars);
 
 		// Clear all deny permissions...if we want that.
@@ -1070,24 +1083,13 @@ function GeneralPermissionSettings($return_config = false)
 			);
 		}
 
-		$_SESSION['adm-save'] = true;
 		redirectexit('action=admin;area=permissions;sa=settings');
 	}
-
-	// We need this for the in-line permissions
-	createToken('admin-mp');
 
 	prepareDBSettingContext($config_vars);
 }
 
-/**
- * Set the permission level for a specific profile, group, or group for a profile.
- * @internal
- *
- * @param string $level The level ('restrict', 'standard', etc.)
- * @param int $group The group to set the permission for
- * @param string|int $profile The ID of the permissions profile or 'null' if we're setting it for a group
- */
+// Set the permission level for a specific profile, group, or group for a profile.
 function setPermissionLevel($level, $group, $profile = 'null')
 {
 	global $smcFunc, $context;
@@ -1109,6 +1111,7 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		'calendar_view',
 		'view_stats',
 		'who_view',
+		'profile_view_own',
 		'profile_identity_own',
 	);
 	$groupLevels['board']['restrict'] = array(
@@ -1118,29 +1121,24 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		'post_reply_any',
 		'delete_own',
 		'modify_own',
+		'mark_any_notify',
+		'mark_notify',
 		'report_any',
+		'send_topic',
 	);
 
 	// Standard - ie. members.  They can do anything Restrictive can.
 	$groupLevels['global']['standard'] = array_merge($groupLevels['global']['restrict'], array(
 		'view_mlist',
-		'likes_view',
-		'likes_like',
-		'mention',
+		'karma_edit',
 		'pm_read',
 		'pm_send',
-		'profile_view',
+		'profile_view_any',
 		'profile_extra_own',
-		'profile_signature_own',
-		'profile_forum_own',
-		'profile_website_own',
-		'profile_password_own',
 		'profile_server_avatar',
-		'profile_displayed_name',
 		'profile_upload_avatar',
 		'profile_remote_avatar',
 		'profile_remove_own',
-		'report_user',
 	));
 	$groupLevels['board']['standard'] = array_merge($groupLevels['board']['restrict'], array(
 		'poll_vote',
@@ -1190,10 +1188,6 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		'calendar_edit_any',
 		'profile_identity_any',
 		'profile_extra_any',
-		'profile_signature_any',
-		'profile_website_any',
-		'profile_displayed_name_any',
-		'profile_password_any',
 		'profile_title_any',
 	));
 	$groupLevels['board']['maintenance'] = array_merge($groupLevels['board']['moderator'], array(
@@ -1206,7 +1200,9 @@ function setPermissionLevel($level, $group, $profile = 'null')
 	// Locked - just that, you can't post here.
 	$boardLevels['locked'] = array(
 		'poll_view',
+		'mark_notify',
 		'report_any',
+		'send_topic',
 		'view_attachments',
 	);
 
@@ -1217,6 +1213,7 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		'post_reply_any',
 		'delete_own',
 		'modify_own',
+		'mark_any_notify',
 		'delete_replies',
 		'modify_replies',
 		'poll_vote',
@@ -1244,8 +1241,6 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		'modify_any',
 		'approve_posts',
 	));
-
-	call_integration_hook('integrate_load_permission_levels', array(&$groupLevels, &$boardLevels));
 
 	// Make sure we're not granting someone too many permissions!
 	foreach ($groupLevels['global'][$level] as $k => $permission)
@@ -1407,11 +1402,7 @@ function setPermissionLevel($level, $group, $profile = 'null')
 		fatal_lang_error('no_access', false);
 }
 
-/**
- * Load permissions into $context['permissions'].
- * @internal
- */
-function loadAllPermissions()
+function loadAllPermissions($loadType = 'classic')
 {
 	global $context, $txt, $modSettings;
 
@@ -1419,107 +1410,120 @@ function loadAllPermissions()
 	// Note to Mod authors - you don't need to stick your permission group here if you don't mind SMF sticking it the last group of the page.
 	$permissionGroups = array(
 		'membergroup' => array(
-			'general',
-			'pm',
-			'calendar',
-			'maintenance',
-			'member_admin',
-			'profile',
-			'likes',
-			'mentions',
+			'simple' => array(
+				'view_basic_info',
+				'use_pm_system',
+				'post_calendar',
+				'edit_profile',
+				'delete_account',
+				'use_avatar',
+				'moderate_general',
+				'administrate',
+			),
+			'classic' => array(
+				'general',
+				'pm',
+				'calendar',
+				'maintenance',
+				'member_admin',
+				'profile',
+			),
 		),
 		'board' => array(
-			'general_board',
-			'topic',
-			'post',
-			'poll',
-			'notification',
-			'attachment',
+			'simple' => array(
+				'make_posts',
+				'make_unapproved_posts',
+				'post_polls',
+				'participate',
+				'modify',
+				'notification',
+				'attach',
+				'moderate',
+			),
+			'classic' => array(
+				'general_board',
+				'topic',
+				'post',
+				'poll',
+				'notification',
+				'attachment',
+			),
 		),
 	);
 
 	/*   The format of this list is as follows:
 		'membergroup' => array(
-			'permissions_inside' => array(has_multiple_options, view_group),
+			'permissions_inside' => array(has_multiple_options, classic_view_group, simple_view_group(_own)*, simple_view_group_any*),
 		),
 		'board' => array(
-			'permissions_inside' => array(has_multiple_options, view_group),
+			'permissions_inside' => array(has_multiple_options, classic_view_group, simple_view_group(_own)*, simple_view_group_any*),
 		);
 	*/
 	$permissionList = array(
 		'membergroup' => array(
-			'view_stats' => array(false, 'general'),
-			'view_mlist' => array(false, 'general'),
-			'who_view' => array(false, 'general'),
-			'search_posts' => array(false, 'general'),
-			'pm_read' => array(false, 'pm'),
-			'pm_send' => array(false, 'pm'),
-			'pm_draft' => array(false, 'pm'),
-			'calendar_view' => array(false, 'calendar'),
-			'calendar_post' => array(false, 'calendar'),
-			'calendar_edit' => array(true, 'calendar'),
-			'admin_forum' => array(false, 'maintenance'),
-			'manage_boards' => array(false, 'maintenance'),
-			'manage_attachments' => array(false, 'maintenance'),
-			'manage_smileys' => array(false, 'maintenance'),
-			'edit_news' => array(false, 'maintenance'),
-			'access_mod_center' => array(false, 'maintenance'),
-			'moderate_forum' => array(false, 'member_admin'),
-			'manage_membergroups' => array(false, 'member_admin'),
-			'manage_permissions' => array(false, 'member_admin'),
-			'manage_bans' => array(false, 'member_admin'),
-			'send_mail' => array(false, 'member_admin'),
-			'issue_warning' => array(false, 'member_admin'),
-			'profile_view' => array(false, 'profile'),
-			'profile_forum' => array(true, 'profile'),
-			'profile_extra' => array(true, 'profile'),
-			'profile_signature' => array(true, 'profile'),
-			'profile_website' => array(true, 'profile'),
-			'profile_title' => array(true, 'profile'),
-			'profile_blurb' => array(true, 'profile'),
-			'profile_server_avatar' => array(false, 'profile'),
-			'profile_upload_avatar' => array(false, 'profile'),
-			'profile_remote_avatar' => array(false, 'profile'),
-			'report_user' => array(false, 'profile'),
-			'profile_identity' => array(true, 'profile_account'),
-			'profile_displayed_name' => array(true, 'profile_account'),
-			'profile_password' => array(true, 'profile_account'),
-			'profile_remove' => array(true, 'profile_account'),
-			'view_warning' => array(true, 'profile_account'),
-			'likes_view' => array(false, 'likes'),
-			'likes_like' => array(false, 'likes'),
-			'mention' => array(false, 'mentions'),
+			'view_stats' => array(false, 'general', 'view_basic_info'),
+			'view_mlist' => array(false, 'general', 'view_basic_info'),
+			'who_view' => array(false, 'general', 'view_basic_info'),
+			'search_posts' => array(false, 'general', 'view_basic_info'),
+			'karma_edit' => array(false, 'general', 'moderate_general'),
+			'pm_read' => array(false, 'pm', 'use_pm_system'),
+			'pm_send' => array(false, 'pm', 'use_pm_system'),
+			'calendar_view' => array(false, 'calendar', 'view_basic_info'),
+			'calendar_post' => array(false, 'calendar', 'post_calendar'),
+			'calendar_edit' => array(true, 'calendar', 'post_calendar', 'moderate_general'),
+			'admin_forum' => array(false, 'maintenance', 'administrate'),
+			'manage_boards' => array(false, 'maintenance', 'administrate'),
+			'manage_attachments' => array(false, 'maintenance', 'administrate'),
+			'manage_smileys' => array(false, 'maintenance', 'administrate'),
+			'edit_news' => array(false, 'maintenance', 'administrate'),
+			'access_mod_center' => array(false, 'maintenance', 'moderate_general'),
+			'moderate_forum' => array(false, 'member_admin', 'moderate_general'),
+			'manage_membergroups' => array(false, 'member_admin', 'administrate'),
+			'manage_permissions' => array(false, 'member_admin', 'administrate'),
+			'manage_bans' => array(false, 'member_admin', 'administrate'),
+			'send_mail' => array(false, 'member_admin', 'administrate'),
+			'issue_warning' => array(false, 'member_admin', 'moderate_general'),
+			'profile_view' => array(true, 'profile', 'view_basic_info', 'view_basic_info'),
+			'profile_identity' => array(true, 'profile', 'edit_profile', 'moderate_general'),
+			'profile_extra' => array(true, 'profile', 'edit_profile', 'moderate_general'),
+			'profile_title' => array(true, 'profile', 'edit_profile', 'moderate_general'),
+			'profile_remove' => array(true, 'profile', 'delete_account', 'moderate_general'),
+			'profile_server_avatar' => array(false, 'profile', 'use_avatar'),
+			'profile_upload_avatar' => array(false, 'profile', 'use_avatar'),
+			'profile_remote_avatar' => array(false, 'profile', 'use_avatar'),
 		),
 		'board' => array(
-			'moderate_board' => array(false, 'general_board'),
-			'approve_posts' => array(false, 'general_board'),
-			'post_new' => array(false, 'topic'),
-			'post_unapproved_topics' => array(false, 'topic'),
-			'post_unapproved_replies' => array(true, 'topic'),
-			'post_reply' => array(true, 'topic'),
-			'post_draft' => array(false, 'topic'),
-			'merge_any' => array(false, 'topic'),
-			'split_any' => array(false, 'topic'),
-			'make_sticky' => array(false, 'topic'),
-			'move' => array(true, 'topic', 'moderate'),
-			'lock' => array(true, 'topic', 'moderate'),
-			'remove' => array(true, 'topic', 'modify'),
-			'modify_replies' => array(false, 'topic'),
-			'delete_replies' => array(false, 'topic'),
-			'announce_topic' => array(false, 'topic'),
-			'delete' => array(true, 'post'),
-			'modify' => array(true, 'post'),
-			'report_any' => array(false, 'post'),
-			'poll_view' => array(false, 'poll'),
-			'poll_vote' => array(false, 'poll'),
-			'poll_post' => array(false, 'poll'),
-			'poll_add' => array(true, 'poll'),
-			'poll_edit' => array(true, 'poll'),
-			'poll_lock' => array(true, 'poll'),
-			'poll_remove' => array(true, 'poll'),
-			'view_attachments' => array(false, 'attachment'),
-			'post_unapproved_attachments' => array(false, 'attachment'),
-			'post_attachment' => array(false, 'attachment'),
+			'moderate_board' => array(false, 'general_board', 'moderate'),
+			'approve_posts' => array(false, 'general_board', 'moderate'),
+			'post_new' => array(false, 'topic', 'make_posts'),
+			'post_unapproved_topics' => array(false, 'topic', 'make_unapproved_posts'),
+			'post_unapproved_replies' => array(true, 'topic', 'make_unapproved_posts', 'make_unapproved_posts'),
+			'post_reply' => array(true, 'topic', 'make_posts', 'make_posts'),
+			'merge_any' => array(false, 'topic', 'moderate'),
+			'split_any' => array(false, 'topic', 'moderate'),
+			'send_topic' => array(false, 'topic', 'moderate'),
+			'make_sticky' => array(false, 'topic', 'moderate'),
+			'move' => array(true, 'topic', 'moderate', 'moderate'),
+			'lock' => array(true, 'topic', 'moderate', 'moderate'),
+			'remove' => array(true, 'topic', 'modify', 'moderate'),
+			'modify_replies' => array(false, 'topic', 'moderate'),
+			'delete_replies' => array(false, 'topic', 'moderate'),
+			'announce_topic' => array(false, 'topic', 'moderate'),
+			'delete' => array(true, 'post', 'modify', 'moderate'),
+			'modify' => array(true, 'post', 'modify', 'moderate'),
+			'report_any' => array(false, 'post', 'participate'),
+			'poll_view' => array(false, 'poll', 'participate'),
+			'poll_vote' => array(false, 'poll', 'participate'),
+			'poll_post' => array(false, 'poll', 'post_polls'),
+			'poll_add' => array(true, 'poll', 'post_polls', 'moderate'),
+			'poll_edit' => array(true, 'poll', 'modify', 'moderate'),
+			'poll_lock' => array(true, 'poll', 'moderate', 'moderate'),
+			'poll_remove' => array(true, 'poll', 'modify', 'moderate'),
+			'mark_any_notify' => array(false, 'notification', 'notification'),
+			'mark_notify' => array(false, 'notification', 'notification'),
+			'view_attachments' => array(false, 'attachment', 'participate'),
+			'post_unapproved_attachments' => array(false, 'attachment', 'make_unapproved_posts'),
+			'post_attachment' => array(false, 'attachment', 'attach'),
 		),
 	);
 
@@ -1539,17 +1543,15 @@ function loadAllPermissions()
 	// Some permissions are hidden if features are off.
 	$hiddenPermissions = array();
 	$relabelPermissions = array(); // Permissions to apply a different label to.
-	if (empty($modSettings['cal_enabled']))
+	$relabelGroups = array(); // As above but for groups.
+	if (!in_array('cd', $context['admin_features']))
 	{
 		$hiddenPermissions[] = 'calendar_view';
 		$hiddenPermissions[] = 'calendar_post';
 		$hiddenPermissions[] = 'calendar_edit';
 	}
-	if ($modSettings['warning_settings'][0] == 0)
-	{
+	if (!in_array('w', $context['admin_features']))
 		$hiddenPermissions[] = 'issue_warning';
-		$hiddenPermissions[] = 'view_warning';
-	}
 
 	// Post moderation?
 	if (!$modSettings['postmod_active'])
@@ -1559,7 +1561,7 @@ function loadAllPermissions()
 		$hiddenPermissions[] = 'post_unapproved_replies';
 		$hiddenPermissions[] = 'post_unapproved_attachments';
 	}
-	// If post moderation is enabled, these are named differently...
+	// If we show them on classic view we change the name.
 	else
 	{
 		// Relabel the topics permissions
@@ -1572,26 +1574,6 @@ function loadAllPermissions()
 		$relabelPermissions['post_attachment'] = 'auto_approve_attachments';
 	}
 
-	// Are attachments enabled?
-	if (empty($modSettings['attachmentEnable']))
-	{
-		$hiddenPermissions[] = 'manage_attachments';
-		$hiddenPermissions[] = 'view_attachments';
-		$hiddenPermissions[] = 'post_unapproved_attachments';
-		$hiddenPermissions[] = 'post_attachment';
-	}
-
-	// Hide Likes/Mentions permissions...
-	if (empty($modSettings['enable_likes']))
-	{
-		$hiddenPermissions[] = 'likes_view';
-		$hiddenPermissions[] = 'likes_like';
-	}
-	if (empty($modSettings['enable_mentions']))
-	{
-		$hiddenPermissions[] = 'mention';
-	}
-
 	// Provide a practical way to modify permissions.
 	call_integration_hook('integrate_load_permissions', array(&$permissionGroups, &$permissionList, &$leftPermissionGroups, &$hiddenPermissions, &$relabelPermissions));
 
@@ -1601,6 +1583,7 @@ function loadAllPermissions()
 	{
 		$context['permissions'][$permissionType] = array(
 			'id' => $permissionType,
+			'view' => $loadType,
 			'columns' => array()
 		);
 		foreach ($permissionList as $permission => $permissionArray)
@@ -1610,46 +1593,76 @@ function loadAllPermissions()
 				continue;
 
 			// What groups will this permission be in?
-			$own_group = $permissionArray[1];
+			$own_group = $permissionArray[($loadType == 'classic' ? 1 : 2)];
+			$any_group = $loadType == 'simple' && !empty($permissionArray[3]) ? $permissionArray[3] : ($loadType == 'simple' && $permissionArray[0] ? $permissionArray[2] : '');
 
 			// First, Do these groups actually exist - if not add them.
-			if (!isset($permissionGroups[$permissionType][$own_group]))
-				$permissionGroups[$permissionType][$own_group] = true;
+			if (!isset($permissionGroups[$permissionType][$loadType][$own_group]))
+				$permissionGroups[$permissionType][$loadType][$own_group] = true;
+			if (!empty($any_group) && !isset($permissionGroups[$permissionType][$loadType][$any_group]))
+				$permissionGroups[$permissionType][$loadType][$any_group] = true;
 
 			// What column should this be located into?
-			$position = !in_array($own_group, $leftPermissionGroups) ? 1 : 0;
+			$position = $loadType == 'classic' && !in_array($own_group, $leftPermissionGroups) ? 1 : 0;
 
 			// If the groups have not yet been created be sure to create them.
 			$bothGroups = array('own' => $own_group);
+			$bothGroups = array();
+
+			// For guests, just reset the array.
+			if (!isset($context['group']['id']) || !($context['group']['id'] == -1 && $any_group))
+				$bothGroups['own'] = $own_group;
+
+			if ($any_group)
+			{
+				$bothGroups['any'] = $any_group;
+
+			}
 
 			foreach ($bothGroups as $group)
 				if (!isset($context['permissions'][$permissionType]['columns'][$position][$group]))
 					$context['permissions'][$permissionType]['columns'][$position][$group] = array(
 						'type' => $permissionType,
 						'id' => $group,
-						'name' => $txt['permissiongroup_' . $group],
+						'name' => $loadType == 'simple' ? (isset($txt['permissiongroup_simple_' . $group]) ? $txt['permissiongroup_simple_' . $group] : '') : $txt['permissiongroup_' . $group],
 						'icon' => isset($txt['permissionicon_' . $group]) ? $txt['permissionicon_' . $group] : $txt['permissionicon'],
 						'help' => isset($txt['permissionhelp_' . $group]) ? $txt['permissionhelp_' . $group] : '',
 						'hidden' => false,
 						'permissions' => array()
 					);
 
-			$context['permissions'][$permissionType]['columns'][$position][$own_group]['permissions'][$permission] = array(
-				'id' => $permission,
-				'name' => !isset($relabelPermissions[$permission]) ? $txt['permissionname_' . $permission] : $txt[$relabelPermissions[$permission]],
-				'show_help' => isset($txt['permissionhelp_' . $permission]),
-				'note' => isset($txt['permissionnote_' . $permission]) ? $txt['permissionnote_' . $permission] : '',
-				'has_own_any' => $permissionArray[0],
-				'own' => array(
-					'id' => $permission . '_own',
-					'name' => $permissionArray[0] ? $txt['permissionname_' . $permission . '_own'] : ''
-				),
-				'any' => array(
-					'id' => $permission . '_any',
-					'name' => $permissionArray[0] ? $txt['permissionname_' . $permission . '_any'] : ''
-				),
-				'hidden' => in_array($permission, $hiddenPermissions),
-			);
+			// This is where we set up the permission dependant on the view.
+			if ($loadType == 'classic')
+			{
+				$context['permissions'][$permissionType]['columns'][$position][$own_group]['permissions'][$permission] = array(
+					'id' => $permission,
+					'name' => !isset($relabelPermissions[$permission]) ? $txt['permissionname_' . $permission] : $txt[$relabelPermissions[$permission]],
+					'show_help' => isset($txt['permissionhelp_' . $permission]),
+					'note' => isset($txt['permissionnote_' . $permission]) ? $txt['permissionnote_' . $permission] : '',
+					'has_own_any' => $permissionArray[0],
+					'own' => array(
+						'id' => $permission . '_own',
+						'name' => $permissionArray[0] ? $txt['permissionname_' . $permission . '_own'] : ''
+					),
+					'any' => array(
+						'id' => $permission . '_any',
+						'name' => $permissionArray[0] ? $txt['permissionname_' . $permission . '_any'] : ''
+					),
+					'hidden' => in_array($permission, $hiddenPermissions),
+				);
+			}
+			else
+			{
+				foreach ($bothGroups as $group_type => $group)
+				{
+					$context['permissions'][$permissionType]['columns'][$position][$group]['permissions'][$permission . ($permissionArray[0] ? '_' . $group_type : '')] = array(
+						'id' => $permission . ($permissionArray[0] ? '_' . $group_type : ''),
+						'name' => isset($txt['permissionname_simple_' . $permission . ($permissionArray[0] ? '_' . $group_type : '')]) ? $txt['permissionname_simple_' . $permission . ($permissionArray[0] ? '_' . $group_type : '')] : $txt['permissionname_' . $permission],
+						'help_index' => isset($txt['permissionhelp_' . $permission]) ? 'permissionhelp_' . $permission : '',
+						'hidden' => in_array($permission, $hiddenPermissions),
+					);
+				}
+			}
 
 			if (in_array($permission, $hiddenPermissions))
 			{
@@ -1663,38 +1676,27 @@ function loadAllPermissions()
 			}
 		}
 		ksort($context['permissions'][$permissionType]['columns']);
-
-		// Check we don't leave any empty groups - and mark hidden ones as such.
-		foreach ($context['permissions'][$permissionType]['columns'] as $column => $groups)
-			foreach ($groups as $id => $group)
-			{
-				if (empty($group['permissions']))
-					unset($context['permissions'][$permissionType]['columns'][$column][$id]);
-				else
-				{
-					$foundNonHidden = false;
-					foreach ($group['permissions'] as $permission)
-						if (empty($permission['hidden']))
-							$foundNonHidden = true;
-					if (!$foundNonHidden)
-						$context['permissions'][$permissionType]['columns'][$column][$id]['hidden'] = true;
-				}
-			}
 	}
+
+	// Check we don't leave any empty groups - and mark hidden ones as such.
+	foreach ($context['permissions'][$permissionType]['columns'] as $column => $groups)
+		foreach ($groups as $id => $group)
+		{
+			if (empty($group['permissions']))
+				unset($context['permissions'][$permissionType]['columns'][$column][$id]);
+			else
+			{
+				$foundNonHidden = false;
+				foreach ($group['permissions'] as $permission)
+					if (empty($permission['hidden']))
+						$foundNonHidden = true;
+				if (!$foundNonHidden)
+					$context['permissions'][$permissionType]['columns'][$column][$id]['hidden'] = true;
+			}
+		}
 }
 
-/**
- * Initialize a form with inline permissions settings.
- * It loads a context variables for each permission.
- * This function is used by several settings screens to set specific permissions.
- * @internal
- *
- * @param array $permissions The permissions to display inline
- * @param array $excluded_groups The IDs of one or more groups to exclude
- *
- * @uses ManagePermissions language
- * @uses ManagePermissions template.
- */
+// Initialize a form with inline permissions.
 function init_inline_permissions($permissions, $excluded_groups = array())
 {
 	global $context, $txt, $modSettings, $smcFunc;
@@ -1741,7 +1743,7 @@ function init_inline_permissions($permissions, $excluded_groups = array())
 	$smcFunc['db_free_result']($request);
 
 	$request = $smcFunc['db_query']('', '
-		SELECT mg.id_group, mg.group_name, mg.min_posts, COALESCE(p.add_deny, -1) AS status, p.permission
+		SELECT mg.id_group, mg.group_name, mg.min_posts, IFNULL(p.add_deny, -1) AS status, p.permission
 		FROM {db_prefix}membergroups AS mg
 			LEFT JOIN {db_prefix}permissions AS p ON (p.id_group = mg.id_group AND p.permission IN ({array_string:permissions}))
 		WHERE mg.id_group NOT IN (1, 3)
@@ -1771,9 +1773,6 @@ function init_inline_permissions($permissions, $excluded_groups = array())
 	}
 	$smcFunc['db_free_result']($request);
 
-	// Make sure we honor the "illegal guest permissions"
-	loadIllegalGuestPermissions();
-
 	// Some permissions cannot be given to certain groups. Remove the groups.
 	foreach ($excluded_groups as $group)
 	{
@@ -1783,26 +1782,9 @@ function init_inline_permissions($permissions, $excluded_groups = array())
 				unset($context[$permission][$group]);
 		}
 	}
-
-	// Are any of these permissions that guests can't have?
-	$non_guest_perms = array_intersect(str_replace(array('_any', '_own'), '', $permissions), $context['non_guest_permissions']);
-	foreach ($non_guest_perms as $permission)
-	{
-		if (isset($context[$permission][-1]))
-			unset($context[$permission][-1]);
-	}
-
-	// Create the token for the separate inline permission verification.
-	createToken('admin-mp');
 }
 
-/**
- * Show a collapsible box to set a specific permission.
- * The function is called by templates to show a list of permissions settings.
- * Calls the template function template_inline_permissions().
- *
- * @param string $permission The permission to display inline
- */
+// Show a collapsible box to set a specific permission.
 function theme_inline_permissions($permission)
 {
 	global $context;
@@ -1813,12 +1795,7 @@ function theme_inline_permissions($permission)
 	template_inline_permissions();
 }
 
-/**
- * Save the permissions of a form containing inline permissions.
- * @internal
- *
- * @param array $permissions The permissions to save
- */
+// Save the permissions of a form containing inline permissions.
 function save_inline_permissions($permissions)
 {
 	global $context, $smcFunc;
@@ -1829,7 +1806,6 @@ function save_inline_permissions($permissions)
 
 	// Almighty session check, verify our ways.
 	checkSession();
-	validateToken('admin-mp');
 
 	// Check they can't do certain things.
 	loadIllegalPermissions();
@@ -1874,9 +1850,6 @@ function save_inline_permissions($permissions)
 	updateSettings(array('settings_updated' => time()));
 }
 
-/**
- * Load permissions profiles.
- */
 function loadPermissionProfiles()
 {
 	global $context, $txt, $smcFunc;
@@ -1907,9 +1880,7 @@ function loadPermissionProfiles()
 	$smcFunc['db_free_result']($request);
 }
 
-/**
- * Add/Edit/Delete profiles.
- */
+// Add/Edit/Delete profiles.
 function EditPermissionProfiles()
 {
 	global $context, $txt, $smcFunc;
@@ -1922,13 +1893,12 @@ function EditPermissionProfiles()
 	if (isset($_POST['create']) && trim($_POST['profile_name']) != '')
 	{
 		checkSession();
-		validateToken('admin-mpp');
 
 		$_POST['copy_from'] = (int) $_POST['copy_from'];
 		$_POST['profile_name'] = $smcFunc['htmlspecialchars']($_POST['profile_name']);
 
 		// Insert the profile itself.
-		$profile_id = $smcFunc['db_insert']('',
+		$smcFunc['db_insert']('',
 			'{db_prefix}permission_profiles',
 			array(
 				'profile_name' => 'string',
@@ -1936,9 +1906,9 @@ function EditPermissionProfiles()
 			array(
 				$_POST['profile_name'],
 			),
-			array('id_profile'),
-			1
+			array('id_profile')
 		);
+		$profile_id = $smcFunc['db_insert_id']('{db_prefix}permission_profiles', 'id_profile');
 
 		// Load the permissions from the one it's being copied from.
 		$request = $smcFunc['db_query']('', '
@@ -1966,7 +1936,6 @@ function EditPermissionProfiles()
 	elseif (isset($_POST['rename']))
 	{
 		checkSession();
-		validateToken('admin-mpp');
 
 		// Just showing the boxes?
 		if (!isset($_POST['rename_profile']))
@@ -1993,8 +1962,7 @@ function EditPermissionProfiles()
 	// Deleting?
 	elseif (isset($_POST['delete']) && !empty($_POST['delete_profile']))
 	{
-		checkSession();
-		validateToken('admin-mpp');
+		checkSession('post');
 
 		$profiles = array();
 		foreach ($_POST['delete_profile'] as $profile)
@@ -2057,17 +2025,9 @@ function EditPermissionProfiles()
 		// You can only delete it if you can edit it AND it's not in use.
 		$context['profiles'][$id]['can_delete'] = $context['profiles'][$id]['can_edit'] && empty($profile['in_use']) ? true : false;
 	}
-
-	createToken('admin-mpp');
 }
 
-/**
- * This function updates the permissions of any groups based off this group.
- *
- * @param null|array $parents The parent groups
- * @param null|int $profile the ID of a permissions profile to update
- * @return void|false Returns nothing if successful or false if there are no child groups to update
- */
+// This function updates the permissions of any groups based off this group.
 function updateChildPermissions($parents, $profile = null)
 {
 	global $smcFunc;
@@ -2187,9 +2147,7 @@ function updateChildPermissions($parents, $profile = null)
 	}
 }
 
-/**
- * Load permissions someone cannot grant.
- */
+// Load permissions someone cannot grant.
 function loadIllegalPermissions()
 {
 	global $context;
@@ -2201,83 +2159,51 @@ function loadIllegalPermissions()
 		$context['illegal_permissions'][] = 'manage_membergroups';
 	if (!allowedTo('manage_permissions'))
 		$context['illegal_permissions'][] = 'manage_permissions';
-
-	call_integration_hook('integrate_load_illegal_permissions');
 }
 
-/**
- * Loads the permissions that can not be given to guests.
- * Stores the permissions in $context['non_guest_permissions'].
-*/
+// Load all the permissions that can not be given to guests.
 function loadIllegalGuestPermissions()
 {
 	global $context;
 
 	$context['non_guest_permissions'] = array(
-		'access_mod_center',
-		'admin_forum',
-		'announce_topic',
-		'approve_posts',
-		'calendar_edit',
-		'delete',
 		'delete_replies',
-		'edit_news',
-		'issue_warning',
-		'likes_like',
-		'lock',
-		'make_sticky',
-		'manage_attachments',
-		'manage_bans',
-		'manage_boards',
-		'manage_membergroups',
-		'manage_permissions',
-		'manage_smileys',
-		'merge_any',
-		'moderate_board',
-		'moderate_forum',
-		'modify',
-		'modify_replies',
-		'move',
-		'pm_autosave_draft',
-		'pm_draft',
+		'karma_edit',
+		'poll_add_own',
 		'pm_read',
 		'pm_send',
-		'poll_add',
-		'poll_edit',
-		'poll_lock',
-		'poll_remove',
-		'post_autosave_draft',
-		'post_draft',
-		'profile_blurb',
-		'profile_displayed_name',
-		'profile_extra',
-		'profile_forum',
 		'profile_identity',
-		'profile_website',
-		'profile_password',
-		'profile_remove',
-		'profile_remote_avatar',
-		'profile_server_avatar',
-		'profile_signature',
+		'profile_extra',
 		'profile_title',
+		'profile_remove',
+		'profile_server_avatar',
 		'profile_upload_avatar',
-		'profile_warning',
-		'remove',
-		'report_any',
-		'report_user',
+		'profile_remote_avatar',
+		'profile_view_own',
+		'mark_any_notify',
+		'mark_notify',
+		'admin_forum',
+		'manage_boards',
+		'manage_attachments',
+		'manage_smileys',
+		'edit_news',
+		'access_mod_center',
+		'moderate_forum',
+		'issue_warning',
+		'manage_membergroups',
+		'manage_permissions',
+		'manage_bans',
+		'move_own',
+		'modify_replies',
 		'send_mail',
-		'split_any',
+		'approve_posts',
 	);
-
-	call_integration_hook('integrate_load_illegal_guest_permissions');
 }
 
-/**
- * Present a nice way of applying post moderation.
- */
+// Present a nice way of applying post moderation.
 function ModifyPostModeration()
 {
-	global $context, $txt, $smcFunc, $modSettings, $sourcedir;
+	global $context, $txt, $smcFunc, $modSettings;
 
 	// Just in case.
 	checkSession('get');
@@ -2296,8 +2222,6 @@ function ModifyPostModeration()
 		'replies_any' => array('post_reply_any', 'post_unapproved_replies_any'),
 		'attachment' => array('post_attachment', 'post_unapproved_attachments'),
 	);
-
-	call_integration_hook('integrate_post_moderation_mapping', array(&$mappings));
 
 	// Start this with the guests/members.
 	$context['profile_groups'] = array(
@@ -2363,75 +2287,47 @@ function ModifyPostModeration()
 	// If we're saving the changes then do just that - save them.
 	if (!empty($_POST['save_changes']) && ($context['current_profile'] == 1 || $context['current_profile'] > 4))
 	{
-		validateToken('admin-mppm');
+		// Start by deleting all the permissions relevant.
+		$smcFunc['db_query']('', '
+			DELETE FROM {db_prefix}board_permissions
+			WHERE id_profile = {int:current_profile}
+				AND permission IN ({array_string:permissions})
+				AND id_group IN ({array_int:profile_group_list})',
+			array(
+				'profile_group_list' => array_keys($context['profile_groups']),
+				'current_profile' => $context['current_profile'],
+				'permissions' => $all_permissions,
+			)
+		);
 
-		// First, are we saving a new value for enabled post moderation?
-		$new_setting = !empty($_POST['postmod_active']);
-		if ($new_setting != $modSettings['postmod_active'])
+		// Do it group by group.
+		$new_permissions = array();
+		foreach ($context['profile_groups'] as $id => $group)
 		{
-			if ($new_setting)
+			foreach ($mappings as $index => $data)
 			{
-				// Turning it on. This seems easy enough.
-				updateSettings(array('postmod_active' => 1));
-			}
-			else
-			{
-				// Turning it off. Not so straightforward. We have to turn off warnings to moderation level, and make everything approved.
-				updateSettings(array(
-					'postmod_active' => 0,
-					'warning_moderate' => 0,
-				));
-
-				require_once($sourcedir . '/PostModeration.php');
-				approveAllData();
-			}
-		}
-		elseif ($modSettings['postmod_active'])
-		{
-			// We're not saving a new setting - and if it's still enabled we have more work to do.
-
-			// Start by deleting all the permissions relevant.
-			$smcFunc['db_query']('', '
-				DELETE FROM {db_prefix}board_permissions
-				WHERE id_profile = {int:current_profile}
-					AND permission IN ({array_string:permissions})
-					AND id_group IN ({array_int:profile_group_list})',
-				array(
-					'profile_group_list' => array_keys($context['profile_groups']),
-					'current_profile' => $context['current_profile'],
-					'permissions' => $all_permissions,
-				)
-			);
-
-			// Do it group by group.
-			$new_permissions = array();
-			foreach ($context['profile_groups'] as $id => $group)
-			{
-				foreach ($mappings as $index => $data)
+				if (isset($_POST[$index][$group['id']]))
 				{
-					if (isset($_POST[$index][$group['id']]))
+					if ($_POST[$index][$group['id']] == 'allow')
 					{
-						if ($_POST[$index][$group['id']] == 'allow')
-						{
-							// Give them both sets for fun.
-							$new_permissions[] = array($context['current_profile'], $group['id'], $data[0], 1);
-							$new_permissions[] = array($context['current_profile'], $group['id'], $data[1], 1);
-						}
-						elseif ($_POST[$index][$group['id']] == 'moderate')
-							$new_permissions[] = array($context['current_profile'], $group['id'], $data[1], 1);
+						// Give them both sets for fun.
+						$new_permissions[] = array($context['current_profile'], $group['id'], $data[0], 1);
+						$new_permissions[] = array($context['current_profile'], $group['id'], $data[1], 1);
 					}
+					elseif ($_POST[$index][$group['id']] == 'moderate')
+						$new_permissions[] = array($context['current_profile'], $group['id'], $data[1], 1);
 				}
 			}
-
-			// Insert new permissions.
-			if (!empty($new_permissions))
-				$smcFunc['db_insert']('',
-					'{db_prefix}board_permissions',
-					array('id_profile' => 'int', 'id_group' => 'int', 'permission' => 'string', 'add_deny' => 'int'),
-					$new_permissions,
-					array('id_profile', 'id_group', 'permission')
-				);
 		}
+
+		// Insert new permissions.
+		if (!empty($new_permissions))
+			$smcFunc['db_insert']('',
+				'{db_prefix}board_permissions',
+				array('id_profile' => 'int', 'id_group' => 'int', 'permission' => 'string', 'add_deny' => 'int'),
+				$new_permissions,
+				array('id_profile', 'id_group', 'permission')
+			);
 	}
 
 	// Now get all the permissions!
@@ -2470,6 +2366,6 @@ function ModifyPostModeration()
 		}
 	}
 	$smcFunc['db_free_result']($request);
-
-	createToken('admin-mppm');
 }
+
+?>

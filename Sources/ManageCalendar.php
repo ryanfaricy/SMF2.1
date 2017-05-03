@@ -1,30 +1,23 @@
 <?php
 
 /**
- * This file allows you to manage the calendar.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * The main controlling function doesn't have much to do... yet.
- * Just check permissions and delegate to the rest.
- *
- * @uses ManageCalendar language file.
- */
+// The main controlling function doesn't have much to do... yet.
 function ManageCalendar()
 {
-	global $context, $txt, $modSettings;
+	global $context, $txt, $scripturl, $modSettings;
 
 	isAllowedTo('admin_forum');
 
@@ -35,58 +28,41 @@ function ManageCalendar()
 	$context['explain_text'] = $txt['calendar_desc'];
 
 	// Little short on the ground of functions here... but things can and maybe will change...
-	if (!empty($modSettings['cal_enabled']))
-	{
-		$subActions = array(
-			'editholiday' => 'EditHoliday',
-			'holidays' => 'ModifyHolidays',
-			'settings' => 'ModifyCalendarSettings'
-		);
-		$default = 'holidays';
-	}
-	else
-	{
-		$subActions = array(
-			'settings' => 'ModifyCalendarSettings'
-		);
-		$default = 'settings';
-	}
+	$subActions = array(
+		'editholiday' => 'EditHoliday',
+		'holidays' => 'ModifyHolidays',
+		'settings' => 'ModifyCalendarSettings'
+	);
 
-	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : $default;
+	$_REQUEST['sa'] = isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]) ? $_REQUEST['sa'] : 'holidays';
 
 	// Set up the two tabs here...
 	$context[$context['admin_menu_name']]['tab_data'] = array(
 		'title' => $txt['manage_calendar'],
 		'help' => 'calendar',
 		'description' => $txt['calendar_settings_desc'],
-	);
-	if (!empty($modSettings['cal_enabled']))
-		$context[$context['admin_menu_name']]['tab_data']['tabs'] = array(
+		'tabs' => array(
 			'holidays' => array(
 				'description' => $txt['manage_holidays_desc'],
 			),
 			'settings' => array(
 				'description' => $txt['calendar_settings_desc'],
 			),
-		);
+		),
+	);
 
-	call_integration_hook('integrate_manage_calendar', array(&$subActions));
-
-	call_helper($subActions[$_REQUEST['sa']]);
+	$subActions[$_REQUEST['sa']]();
 }
 
-/**
- * The function that handles adding, and deleting holiday data
- */
+// The function that handles adding, and deleting holiday data
 function ModifyHolidays()
 {
-	global $sourcedir, $scripturl, $txt, $context, $modSettings;
+	global $sourcedir, $scripturl, $txt, $context;
 
 	// Submitting something...
 	if (isset($_REQUEST['delete']) && !empty($_REQUEST['holiday']))
 	{
 		checkSession();
-		validateToken('admin-mc');
 
 		foreach ($_REQUEST['holiday'] as $id => $value)
 			$_REQUEST['holiday'][$id] = (int) $id;
@@ -96,11 +72,10 @@ function ModifyHolidays()
 		removeHolidays($_REQUEST['holiday']);
 	}
 
-	createToken('admin-mc');
 	$listOptions = array(
 		'id' => 'holiday_list',
 		'title' => $txt['current_holidays'],
-		'items_per_page' => $modSettings['defaultMaxListItems'],
+		'items_per_page' => 20,
 		'base_href' => $scripturl . '?action=admin;area=managecalendar;sa=holidays',
 		'default_sort_col' => 'name',
 		'get_items' => array(
@@ -127,8 +102,8 @@ function ModifyHolidays()
 					),
 				),
 				'sort' => array(
-					'default' => 'title ASC, event_date ASC',
-					'reverse' => 'title DESC, event_date ASC',
+					'default' => 'title',
+					'reverse' => 'title DESC',
 				)
 			),
 			'date' => array(
@@ -136,14 +111,16 @@ function ModifyHolidays()
 					'value' => $txt['date'],
 				),
 				'data' => array(
-					'function' => function ($rowData) use ($txt)
-					{
+					'function' => create_function('$rowData', '
+						global $txt;
+
 						// Recurring every year or just a single year?
-						$year = $rowData['year'] == '0004' ? sprintf('(%1$s)', $txt['every_year']) : $rowData['year'];
+						$year = $rowData[\'year\'] == \'0004\' ? sprintf(\'(%1$s)\', $txt[\'every_year\']) : $rowData[\'year\'];
 
 						// Construct the date.
-						return sprintf('%1$d %2$s %3$s', $rowData['day'], $txt['months'][(int) $rowData['month']], $year);
-					},
+						return sprintf(\'%1$d %2$s %3$s\', $rowData[\'day\'], $txt[\'months\'][(int) $rowData[\'month\']], $year);
+					'),
+					'class' => 'windowbg',
 				),
 				'sort' => array(
 					'default' => 'event_date',
@@ -152,34 +129,29 @@ function ModifyHolidays()
 			),
 			'check' => array(
 				'header' => array(
-					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check">',
-					'class' => 'centercol',
+					'value' => '<input type="checkbox" onclick="invertAll(this, this.form);" class="input_check" />',
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '<input type="checkbox" name="holiday[%1$d]" class="input_check">',
+						'format' => '<input type="checkbox" name="holiday[%1$d]" class="input_check" />',
 						'params' => array(
 							'id_holiday' => false,
 						),
 					),
-					'class' => 'centercol',
+					'style' => 'text-align: center',
 				),
 			),
 		),
 		'form' => array(
 			'href' => $scripturl . '?action=admin;area=managecalendar;sa=holidays',
-			'token' => 'admin-mc',
 		),
 		'additional_rows' => array(
 			array(
-				'position' => 'above_column_headers',
-				'value' => '<input type="submit" name="delete" value="' . $txt['quickmod_delete_selected'] . '" class="button_submit">
-					<a class="button_link" href="' . $scripturl . '?action=admin;area=managecalendar;sa=editholiday">' . $txt['holidays_add'] . '</a>',
-			),
-			array(
 				'position' => 'below_table_data',
-				'value' => '<input type="submit" name="delete" value="' . $txt['quickmod_delete_selected'] . '" class="button_submit">
-					<a class="button_link" href="' . $scripturl . '?action=admin;area=managecalendar;sa=editholiday">' . $txt['holidays_add'] . '</a>',
+				'value' => '
+					<a href="' . $scripturl . '?action=admin;area=managecalendar;sa=editholiday" style="margin: 0 1em">[' . $txt['holidays_add'] . ']</a>
+					<input type="submit" name="delete" value="' . $txt['quickmod_delete_selected'] . '" class="button_submit" />',
+				'style' => 'text-align: right;',
 			),
 		),
 	);
@@ -195,12 +167,10 @@ function ModifyHolidays()
 	$context['sub_template'] = 'show_list';
 }
 
-/**
- * This function is used for adding/editing a specific holiday
- */
+// This function is used for adding/editing a specific holiday
 function EditHoliday()
 {
-	global $txt, $context, $smcFunc;
+	global $txt, $context, $scripturl, $smcFunc;
 
 	loadTemplate('ManageCalendar');
 
@@ -258,7 +228,6 @@ function EditHoliday()
 
 		updateSettings(array(
 			'calendar_updated' => time(),
-			'settings_updated' => time(),
 		));
 
 		redirectexit('action=admin;area=managecalendar;sa=holidays');
@@ -300,15 +269,9 @@ function EditHoliday()
 	$context['holiday']['last_day'] = (int) strftime('%d', mktime(0, 0, 0, $context['holiday']['month'] == 12 ? 1 : $context['holiday']['month'] + 1, 0, $context['holiday']['month'] == 12 ? $context['holiday']['year'] + 1 : $context['holiday']['year']));
 }
 
-/**
- * Show and allow to modify calendar settings. Obviously.
- *
- * @param bool $return_config Whether to return the $config_vars array (used for admin search)
- * @return void|array Returns nothing or returns $config_vars if $return_config is true
- */
 function ModifyCalendarSettings($return_config = false)
 {
-	global $context, $txt, $sourcedir, $scripturl, $smcFunc, $modSettings;
+	global $modSettings, $context, $settings, $txt, $boarddir, $sourcedir, $scripturl, $smcFunc;
 
 	// Load the boards list.
 	$boards = array('');
@@ -323,60 +286,35 @@ function ModifyCalendarSettings($return_config = false)
 		$boards[$row['id_board']] = $row['cat_name'] . ' - ' . $row['board_name'];
 	$smcFunc['db_free_result']($request);
 
-	require_once($sourcedir . '/Subs-Boards.php');
-	sortBoards($boards);
-
 	// Look, all the calendar settings - of which there are many!
-	if (!empty($modSettings['cal_enabled']))
-		$config_vars = array(
-				array('check', 'cal_enabled'),
-			'',
-				// All the permissions:
-				array('permissions', 'calendar_view', 'help' => 'cal_enabled'),
-				array('permissions', 'calendar_post'),
-				array('permissions', 'calendar_edit_own'),
-				array('permissions', 'calendar_edit_any'),
-			'',
-				// How many days to show on board index, and where to display events etc?
-				array('select', 'calendar_default_view', array('view_list' => $txt['setting_cal_view_list'], 'view_month' => $txt['setting_cal_view_month'], 'view_week' => $txt['setting_cal_view_week'])),
-				array('int', 'cal_days_for_index', 6, 'postinput' => $txt['days_word']),
-				array('select', 'cal_showholidays', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
-				array('select', 'cal_showbdays', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
-				array('select', 'cal_showevents', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
-				array('check', 'cal_export'),
-			'',
-				// Linking events etc...
-				array('select', 'cal_defaultboard', $boards),
-				array('check', 'cal_daysaslink'),
-				array('check', 'cal_allow_unlinked'),
-				array('check', 'cal_showInTopic'),
-			'',
-				// Dates of calendar...
-				array('int', 'cal_minyear'),
-				array('int', 'cal_maxyear'),
-			'',
-				// Calendar spanning...
-				array('int', 'cal_maxspan', 6, 'postinput' => $txt['days_word'], 'subtext' => $txt['zero_for_no_limit']),
-			'',
-				// A comment is like a dog marking its territory. ;)
-				array('select', 'cal_highlight_events', array(0 => $txt['setting_cal_highlight_none'], 1 => $txt['setting_cal_highlight_mini'], 2 => $txt['setting_cal_highlight_main'], 3 => $txt['setting_cal_highlight_both'])),
-				array('select', 'cal_highlight_holidays', array(0 => $txt['setting_cal_highlight_none'], 1 => $txt['setting_cal_highlight_mini'], 2 => $txt['setting_cal_highlight_main'], 3 => $txt['setting_cal_highlight_both'])),
-				array('select', 'cal_highlight_birthdays', array(0 => $txt['setting_cal_highlight_none'], 1 => $txt['setting_cal_highlight_mini'], 2 => $txt['setting_cal_highlight_main'], 3 => $txt['setting_cal_highlight_both'])),
-			'',
-				// Miscellaneous layout settings...
-				array('check', 'cal_disable_prev_next'),
-				array('select', 'cal_display_type', array(0 => $txt['setting_cal_display_comfortable'], 1 => $txt['setting_cal_display_compact'])),
-				array('select', 'cal_week_links', array(0 => $txt['setting_cal_week_links_none'], 1 => $txt['setting_cal_week_links_mini'], 2 => $txt['setting_cal_week_links_main'], 3 => $txt['setting_cal_week_links_both'])),
-				array('check', 'cal_prev_next_links'),
-				array('check', 'cal_short_days'),
-				array('check', 'cal_short_months'),
-		);
-	else
-		$config_vars = array(
-			array('check', 'cal_enabled'),
-		);
+	$config_vars = array(
+			// All the permissions:
+			array('permissions', 'calendar_view', 'help' => 'cal_enabled'),
+			array('permissions', 'calendar_post'),
+			array('permissions', 'calendar_edit_own'),
+			array('permissions', 'calendar_edit_any'),
+		'',
+			// How many days to show on board index, and where to display events etc?
+			array('int', 'cal_days_for_index'),
+			array('select', 'cal_showholidays', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
+			array('select', 'cal_showbdays', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
+			array('select', 'cal_showevents', array(0 => $txt['setting_cal_show_never'], 1 => $txt['setting_cal_show_cal'], 3 => $txt['setting_cal_show_index'], 2 => $txt['setting_cal_show_all'])),
+		'',
+			// Linking events etc...
+			array('select', 'cal_defaultboard', $boards),
+			array('check', 'cal_daysaslink'),
+			array('check', 'cal_allow_unlinked'),
+			array('check', 'cal_showInTopic'),
+		'',
+			// Dates of calendar...
+			array('int', 'cal_minyear'),
+			array('int', 'cal_maxyear'),
+		'',
+			// Calendar spanning...
+			array('check', 'cal_allowspan'),
+			array('int', 'cal_maxspan'),
+	);
 
-	call_integration_hook('integrate_modify_calendar_settings', array(&$config_vars));
 	if ($return_config)
 		return $config_vars;
 
@@ -395,7 +333,6 @@ function ModifyCalendarSettings($return_config = false)
 	if (isset($_GET['save']))
 	{
 		checkSession();
-		call_integration_hook('integrate_save_calendar_settings');
 		saveDBSettings($config_vars);
 
 		// Update the stats in case.
@@ -403,13 +340,11 @@ function ModifyCalendarSettings($return_config = false)
 			'calendar_updated' => time(),
 		));
 
-		$_SESSION['adm-save'] = true;
 		redirectexit('action=admin;area=managecalendar;sa=settings');
 	}
-
-	// We need this for the inline permissions
-	createToken('admin-mp');
 
 	// Prepare the settings...
 	prepareDBSettingContext($config_vars);
 }
+
+?>

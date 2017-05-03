@@ -28,7 +28,7 @@ function smc_AutoSuggest(oOptions)
 	// Are there any items that should be added in advance?
 	this.aListItems = 'aListItems' in this.opt ? this.opt.aListItems : [];
 
-	this.sItemTemplate = 'sItemTemplate' in this.opt ? this.opt.sItemTemplate : '<input type="hidden" name="%post_name%[]" value="%item_id%"><a href="%item_href%" class="extern" onclick="window.open(this.href, \'_blank\'); return false;">%item_name%</a>&nbsp;<span class="generic_icons delete" title="%delete_text%" onclick="return %self%.deleteAddedItem(%item_id%);"></span>';
+	this.sItemTemplate = 'sItemTemplate' in this.opt ? this.opt.sItemTemplate : '<input type="hidden" name="%post_name%[]" value="%item_id%" /><a href="%item_href%" class="extern" onclick="window.open(this.href, \'_blank\'); return false;">%item_name%</a>&nbsp;<img src="%images_url%/pm_recipient_delete.gif" alt="%delete_text%" title="%delete_text%" onclick="return %self%.deleteAddedItem(%item_id%);" />';
 
 	this.sTextDeleteItem = 'sTextDeleteItem' in this.opt ? this.opt.sTextDeleteItem : '';
 
@@ -39,12 +39,17 @@ function smc_AutoSuggest(oOptions)
 	this.oHideTimer = null;
 	this.bPositionComplete = false;
 
+	this.oXmlRequestHandle = null;
+
 	// Just make sure the page is loaded before calling the init.
 	addLoadEvent(this.opt.sSelf + '.init();');
 }
 
 smc_AutoSuggest.prototype.init = function()
 {
+	if (!window.XMLHttpRequest)
+		return false;
+
 	// Create a div that'll contain the results later on.
 	this.oSuggestDivHandle = document.createElement('div');
 	this.oSuggestDivHandle.className = 'auto_suggest_div';
@@ -609,11 +614,17 @@ smc_AutoSuggest.prototype.autoSuggestUpdate = function ()
 		}
 	}
 
+	// In progress means destroy!
+	if (typeof(this.oXmlRequestHandle) == 'object' && this.oXmlRequestHandle != null)
+		this.oXmlRequestHandle.abort();
+
 	// Clean the text handle.
 	sSearchString = sSearchString.php_to8bit().php_urlencode();
 
 	// Get the document.
-	sendXMLDocument.call(this, this.sRetrieveURL.replace(/%scripturl%/g, smf_prepareScriptUrl(smf_scripturl)).replace(/%suggest_type%/g, this.opt.sSearchType).replace(/%search%/g, sSearchString).replace(/%sessionVar%/g, this.opt.sSessionVar).replace(/%sessionID%/g, this.opt.sSessionId).replace(/%time%/g, new Date().getTime()), '', this.onSuggestionReceived);
+	this.tmpMethod = getXMLDocument;
+	this.oXmlRequestHandle = this.tmpMethod(this.sRetrieveURL.replace(/%scripturl%/g, smf_prepareScriptUrl(smf_scripturl)).replace(/%suggest_type%/g, this.opt.sSearchType).replace(/%search%/g, sSearchString).replace(/%sessionVar%/g, this.opt.sSessionVar).replace(/%sessionID%/g, this.opt.sSessionId).replace(/%time%/g, new Date().getTime()), this.onSuggestionReceived);
+	delete this.tmpMethod;
 
 	return true;
 }

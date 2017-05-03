@@ -3,86 +3,76 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * The main "Here's how you can reset your password" page
- */
 function template_main()
 {
-	global $context, $txt, $scripturl;
+	global $context, $settings, $options, $txt, $scripturl;
 
 	echo '
-	<br>
+	<br />
 	<form action="', $scripturl, '?action=reminder;sa=picktype" method="post" accept-charset="', $context['character_set'], '">
 		<div class="tborder login">
 			<div class="cat_bar">
 				<h3 class="catbg">', $txt['authentication_reminder'], '</h3>
 			</div>
+			<span class="upperframe"><span></span></span>
 			<div class="roundframe">
 				<p class="smalltext centertext">', $txt['password_reminder_desc'], '</p>
 				<dl>
 					<dt>', $txt['user_email'], ':</dt>
-					<dd><input type="text" name="user" size="30" class="input_text"></dd>
+					<dd><input type="text" name="user" size="30" class="input_text" /></dd>
 				</dl>
-				<input type="submit" value="', $txt['reminder_continue'], '" class="button_submit">
-				<br class="clear">
+				<p class="centertext"><input type="submit" value="', $txt['reminder_continue'], '" class="button_submit" /></p>
 			</div>
+			<span class="lowerframe"><span></span></span>
 		</div>
-		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-		<input type="hidden" name="', $context['remind_token_var'], '" value="', $context['remind_token'], '">
+		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
 	</form>';
 }
 
-/**
- * The page to pick an option - secret question/answer (if set) or email
- */
 function template_reminder_pick()
 {
-	global $context, $txt, $scripturl;
+	global $context, $settings, $options, $txt, $scripturl;
 
 	echo '
-	<br>
+	<br />
 	<form action="', $scripturl, '?action=reminder;sa=picktype" method="post" accept-charset="', $context['character_set'], '">
 		<div class="tborder login">
 			<div class="cat_bar">
 				<h3 class="catbg">', $txt['authentication_reminder'], '</h3>
 			</div>
+			<span class="upperframe"><span></span></span>
 			<div class="roundframe">
 				<p><strong>', $txt['authentication_options'], ':</strong></p>
 				<p>
-					<input type="radio" name="reminder_type" id="reminder_type_email" value="email" checked class="input_radio"></dt>
-					<label for="reminder_type_email">', $txt['authentication_password_email'], '</label></dd>
+					<input type="radio" name="reminder_type" id="reminder_type_email" value="email" checked="checked" class="input_radio" /></dt>
+					<label for="reminder_type_email">', $txt['authentication_' . $context['account_type'] . '_email'], '</label></dd>
 				</p>
 				<p>
-					<input type="radio" name="reminder_type" id="reminder_type_secret" value="secret" class="input_radio">
-					<label for="reminder_type_secret">', $txt['authentication_password_secret'], '</label>
+					<input type="radio" name="reminder_type" id="reminder_type_secret" value="secret" class="input_radio" />
+					<label for="reminder_type_secret">', $txt['authentication_' . $context['account_type'] . '_secret'], '</label>
 				</p>
-				<div class="flow_auto">
-					<input type="submit" value="', $txt['reminder_continue'], '" class="button_submit">
-					<input type="hidden" name="uid" value="', $context['current_member']['id'], '">
-					<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-					<input type="hidden" name="', $context['remind_token_var'], '" value="', $context['remind_token'], '">
-				</div>
+				<p class="centertext"><input type="submit" value="', $txt['reminder_continue'], '" class="button_submit" /></p>
 			</div>
+			<span class="lowerframe"><span></span></span>
 		</div>
+		<input type="hidden" name="uid" value="', $context['current_member']['id'], '" />
+		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
 	</form>';
 }
 
-/**
- * Just a simple "We sent you an email. Click the link in it to continue." message
- */
 function template_sent()
 {
-	global $context;
+	global $context, $settings, $options, $txt, $scripturl;
 
 	echo '
-		<br>
+		<br />
 		<div class="tborder login" id="reminder_sent">
 			<div class="cat_bar">
 				<h3 class="catbg">' . $context['page_title'] . '</h3>
@@ -91,46 +81,45 @@ function template_sent()
 		</div>';
 }
 
-/**
- * Template for setting the new password
- */
 function template_set_password()
 {
-	global $context, $txt, $scripturl, $modSettings;
+	global $context, $settings, $options, $txt, $scripturl, $modSettings;
 
 	echo '
-	<br>
+	<script type="text/javascript" src="', $settings['default_theme_url'], '/scripts/register.js"></script>
+	<br />
 	<form action="', $scripturl, '?action=reminder;sa=setpassword2" name="reminder_form" id="reminder_form" method="post" accept-charset="', $context['character_set'], '">
 		<div class="tborder login">
 			<div class="cat_bar">
 				<h3 class="catbg">', $context['page_title'], '</h3>
 			</div>
+			<span class="upperframe"><span></span></span>
 			<div class="roundframe">
 				<dl>
 					<dt>', $txt['choose_pass'], ': </dt>
 					<dd>
-						<input type="password" name="passwrd1" id="smf_autov_pwmain" size="22" class="input_password">
+						<input type="password" name="passwrd1" id="smf_autov_pwmain" size="22" class="input_password" />
 						<span id="smf_autov_pwmain_div" style="display: none;">
-							<span id="smf_autov_pwmain_img" class="generic_icons invalid"></span>
+							<img id="smf_autov_pwmain_img" src="', $settings['images_url'], '/icons/field_invalid.gif" alt="*" />
 						</span>
 					</dd>
 					<dt>', $txt['verify_pass'], ': </dt>
 					<dd>
-						<input type="password" name="passwrd2" id="smf_autov_pwverify" size="22" class="input_password">
+						<input type="password" name="passwrd2" id="smf_autov_pwverify" size="22" class="input_password" />
 						<span id="smf_autov_pwverify_div" style="display: none;">
-							<span id="smf_autov_pwverify_img" class="generic_icons invalid"></span>
+							<img id="smf_autov_pwverify_img" src="', $settings['images_url'], '/icons/field_invalid.gif" alt="*" />
 						</span>
 					</dd>
 				</dl>
-				<p class="align_center"><input type="submit" value="', $txt['save'], '" class="button_submit"></p>
+				<p class="align_center"><input type="submit" value="', $txt['save'], '" class="button_submit" /></p>
 			</div>
+			<span class="lowerframe"><span></span></span>
 		</div>
-		<input type="hidden" name="code" value="', $context['code'], '">
-		<input type="hidden" name="u" value="', $context['memID'], '">
-		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-		<input type="hidden" name="', $context['remind-sp_token_var'], '" value="', $context['remind-sp_token'], '">
+		<input type="hidden" name="code" value="', $context['code'], '" />
+		<input type="hidden" name="u" value="', $context['memID'], '" />
+		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
 	</form>
-	<script>
+	<script type="text/javascript"><!-- // --><![CDATA[
 	var regTextStrings = {
 		"password_short": "', $txt['registration_password_short'], '",
 		"password_reserved": "', $txt['registration_password_reserved'], '",
@@ -139,55 +128,60 @@ function template_set_password()
 		"password_valid": "', $txt['registration_password_valid'], '"
 	};
 	var verificationHandle = new smfRegister("reminder_form", ', empty($modSettings['password_strength']) ? 0 : $modSettings['password_strength'], ', regTextStrings);
-</script>';
+// ]]></script>';
 }
 
-/**
- * The page that asks a user to answer their secret question
- */
 function template_ask()
 {
-	global $context, $txt, $scripturl, $modSettings;
+	global $context, $settings, $options, $txt, $scripturl, $modSettings;
 
 	echo '
-	<br>
+	<script type="text/javascript" src="', $settings['default_theme_url'], '/scripts/register.js"></script>
+	<br />
 	<form action="', $scripturl, '?action=reminder;sa=secret2" method="post" accept-charset="', $context['character_set'], '" name="creator" id="creator">
 		<div class="tborder login">
 			<div class="cat_bar">
 				<h3 class="catbg">', $txt['authentication_reminder'], '</h3>
 			</div>
+			<span class="upperframe"><span></span></span>
 			<div class="roundframe">
-				<p class="smalltext">', $txt['enter_new_password'], '</p>
+				<p class="smalltext">', $context['account_type'] == 'password' ? $txt['enter_new_password'] : $txt['openid_secret_reminder'], '</p>
 				<dl>
 					<dt>', $txt['secret_question'], ':</dt>
 					<dd>', $context['secret_question'], '</dd>
 					<dt>', $txt['secret_answer'], ':</dt>
-					<dd><input type="text" name="secret_answer" size="22" class="input_text"></dd>
+					<dd><input type="text" name="secret_answer" size="22" class="input_text" /></dd>';
+
+	if ($context['account_type'] == 'password')
+		echo '
 					<dt>', $txt['choose_pass'], ': </dt>
 					<dd>
-						<input type="password" name="passwrd1" id="smf_autov_pwmain" size="22" class="input_password">
+						<input type="password" name="passwrd1" id="smf_autov_pwmain" size="22" class="input_password" />
 						<span id="smf_autov_pwmain_div" style="display: none;">
-							<span id="smf_autov_pwmain_img" class="generic_icons invalid"></span>
+							<img id="smf_autov_pwmain_img" src="', $settings['images_url'], '/icons/field_invalid.gif" alt="*" />
 						</span>
 					</dd>
 					<dt>', $txt['verify_pass'], ': </dt>
 					<dd>
-						<input type="password" name="passwrd2" id="smf_autov_pwverify" size="22" class="input_password">
+						<input type="password" name="passwrd2" id="smf_autov_pwverify" size="22" class="input_password" />
 						<span id="smf_autov_pwverify_div" style="display: none;">
-							<span id="smf_autov_pwverify_img" class="generic_icons valid"></span>
+							<img id="smf_autov_pwverify_img" src="', $settings['images_url'], '/icons/field_valid.gif" alt="*" />
 						</span>
-					</dd>
+					</dd>';
+
+	echo '
 				</dl>
-				<div class="auto_flow">
-					<input type="submit" value="', $txt['save'], '" class="button_submit">
-					<input type="hidden" name="uid" value="', $context['remind_user'], '">
-					<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-					<input type="hidden" name="', $context['remind-sai_token_var'], '" value="', $context['remind-sai_token'], '">
-				</div>
+				<p class="align_center"><input type="submit" value="', $txt['save'], '" class="button_submit" /></p>
 			</div>
+			<span class="lowerframe"><span></span></span>
 		</div>
-	</form>
-<script>
+		<input type="hidden" name="uid" value="', $context['remind_user'], '" />
+		<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
+	</form>';
+
+	if ($context['account_type'] == 'password')
+		echo '
+<script type="text/javascript"><!-- // --><![CDATA[
 	var regTextStrings = {
 		"password_short": "', $txt['registration_password_short'], '",
 		"password_reserved": "', $txt['registration_password_reserved'], '",
@@ -196,6 +190,8 @@ function template_ask()
 		"password_valid": "', $txt['registration_password_valid'], '"
 	};
 	var verificationHandle = new smfRegister("creator", ', empty($modSettings['password_strength']) ? 0 : $modSettings['password_strength'], ', regTextStrings);
-</script>';
+// ]]></script>';
 
 }
+
+?>

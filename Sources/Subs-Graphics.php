@@ -1,41 +1,112 @@
 <?php
 
 /**
- * This file deals with low-level graphics operations performed on images,
- * specially as needed for avatars (uploaded avatars), attachments, or
- * visual verification images.
- * It uses, for gifs at least, Gif Util. For more information on that,
- * please see its website.
- * TrueType fonts supplied by www.LarabieFonts.com
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.12
  */
+
+// TrueType fonts supplied by www.LarabieFonts.com
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * downloads a file from a url and stores it locally for avatar use by id_member.
- * - supports GIF, JPG, PNG, BMP and WBMP formats.
- * - detects if GD2 is available.
- * - uses resizeImageFile() to resize to max_width by max_height, and saves the result to a file.
- * - updates the database info for the member's avatar.
- * - returns whether the download and resize was successful.
- *
- * @param string $url The full path to the temporary file
- * @param int $memID The member ID
- * @param int $max_width The maximum allowed width for the avatar
- * @param int $max_height The maximum allowed height for the avatar
- * @return boolean Whether the download and resize was successful.
- *
- */
+/*	This whole file deals almost exclusively with handling avatars,
+	specifically uploaded ones.  It uses, for gifs at least, Gif Util... for
+	more information on that, please see its website, shown above.  The other
+	functions are as follows:
+
+	bool downloadAvatar(string url, int id_member, int max_width,
+			int max_height)
+		- downloads file from url and stores it locally for avatar use
+		  by id_member.
+		- supports GIF, JPG, PNG, BMP and WBMP formats.
+		- detects if GD2 is available.
+		- if GIF support isn't present in GD, handles GIFs with gif_loadFile()
+		  and gif_outputAsPng().
+		- uses resizeImageFile() to resize to max_width by max_height,
+		  and saves the result to a file.
+		- updates the database info for the member's avatar.
+		- returns whether the download and resize was successful.
+
+	bool createThumbnail(string source, int max_width, int max_height)
+		- create a thumbnail of the given source.
+		- uses the resizeImageFile function to achieve the resize.
+		- returns whether the thumbnail creation was successful.
+
+	bool reencodeImage(string fileName, int preferred_format = 0)
+		- creates a copy of the file at the same location as fileName.
+		- the file would have the format preferred_format if possible,
+		  otherwise the default format is jpeg.
+		- makes sure that all non-essential image contents are disposed.
+		- returns true on success, false on failure.
+
+	bool checkImageContents(string fileName, bool extensiveCheck = false)
+		- searches through the file to see if there's non-binary content.
+		- if extensiveCheck is true, searches for asp/php short tags as well.
+		- returns true on success, false on failure.
+
+	bool checkGD()
+		- sets a global $gd2 variable needed by some functions to determine
+		  whetehr the GD2 library is present.
+		- returns whether or not GD1 is available.
+
+	void resizeImageFile(string source, string destination,
+			int max_width, int max_height, int preferred_format = 0)
+		- resizes an image from a remote location or a local file.
+		- puts the resized image at the destination location.
+		- the file would have the format preferred_format if possible,
+		  otherwise the default format is jpeg.
+		- returns whether it succeeded.
+
+	void resizeImage(resource src_img, string destination_filename,
+			int src_width, int src_height, int max_width, int max_height,
+			int preferred_format)
+		- resizes src_img proportionally to fit within max_width and
+		  max_height limits if it is too large.
+		- if GD2 is present, it'll use it to achieve better quality.
+		- saves the new image to destination_filename.
+		- saves as preferred_format if possible, default is jpeg.
+
+	void imagecopyresamplebicubic(resource dest_img, resource src_img,
+			int dest_x, int dest_y, int src_x, int src_y, int dest_w,
+			int dest_h, int src_w, int src_h)
+		- used when imagecopyresample() is not available.
+
+	resource gif_loadFile(string filename, int animation_index)
+		- loads a gif file with the Yamasoft GIF utility class.
+		- returns a new GD image.
+
+	bool gif_outputAsPng(resource gif, string destination_filename,
+			int bgColor = -1)
+		- writes a gif file to disk as a png file.
+		- returns whether it was successful or not.
+
+	bool imagecreatefrombmp(string filename)
+		- is set only if it doesn't already exist (for forwards compatiblity.)
+		- only supports uncompressed bitmaps.
+		- returns an image identifier representing the bitmap image obtained
+		  from the given filename.
+
+	bool showCodeImage(string code)
+		- show an image containing the visual verification code for registration.
+		- requires the GD extension.
+		- uses a random font for each letter from default_theme_dir/fonts.
+		- outputs a gif or a png (depending on whether gif ix supported).
+		- returns false if something goes wrong.
+
+	bool showLetterImage(string letter)
+		- show a letter for the visual verification code.
+		- alternative function for showCodeImage() in case GD is missing.
+		- includes an image from a random sub directory of
+		  default_theme_dir/fonts.
+*/
+
 function downloadAvatar($url, $memID, $max_width, $max_height)
 {
 	global $modSettings, $sourcedir, $smcFunc;
@@ -50,30 +121,29 @@ function downloadAvatar($url, $memID, $max_width, $max_height)
 	require_once($sourcedir . '/ManageAttachments.php');
 	removeAttachments(array('id_member' => $memID));
 
-	$id_folder = 1;
-	$avatar_hash = '';
-	$attachID = $smcFunc['db_insert']('',
+	$id_folder = !empty($modSettings['currentAttachmentUploadDir']) ? $modSettings['currentAttachmentUploadDir'] : 1;
+	$avatar_hash = empty($modSettings['custom_avatar_enabled']) ? getAttachmentFilename($destName, false, null, true) : '';
+	$smcFunc['db_insert']('',
 		'{db_prefix}attachments',
 		array(
 			'id_member' => 'int', 'attachment_type' => 'int', 'filename' => 'string-255', 'file_hash' => 'string-255', 'fileext' => 'string-8', 'size' => 'int',
 			'id_folder' => 'int',
 		),
 		array(
-			$memID, 1, $destName, $avatar_hash, $ext, 1,
+			$memID, empty($modSettings['custom_avatar_enabled']) ? 0 : 1, $destName, $avatar_hash, $ext, 1,
 			$id_folder,
 		),
-		array('id_attach'),
-		1
+		array('id_attach')
 	);
-
+	$attachID = $smcFunc['db_insert_id']('{db_prefix}attachments', 'id_attach');
 	// Retain this globally in case the script wants it.
 	$modSettings['new_avatar_data'] = array(
 		'id' => $attachID,
 		'filename' => $destName,
-		'type' => 1,
+		'type' => empty($modSettings['custom_avatar_enabled']) ? 0 : 1,
 	);
 
-	$destName = $modSettings['custom_avatar_dir'] . '/' . $destName . '.tmp';
+	$destName = (empty($modSettings['custom_avatar_enabled']) ? (is_array($modSettings['attachmentUploadDir']) ? $modSettings['attachmentUploadDir'][$modSettings['currentAttachmentUploadDir']] : $modSettings['attachmentUploadDir']) : $modSettings['custom_avatar_dir']) . '/' . $destName . '.tmp';
 
 	// Resize it.
 	if (!empty($modSettings['avatar_download_png']))
@@ -86,10 +156,20 @@ function downloadAvatar($url, $memID, $max_width, $max_height)
 
 	if ($success)
 	{
-		// Remove the .tmp extension from the attachment.
-		if (rename($destName . '.tmp', empty($avatar_hash) ? $destName : $path . '/' . $attachID . '_' . $avatar_hash . '.dat'))
+		// Walk the right path.
+		if (!empty($modSettings['currentAttachmentUploadDir']))
 		{
-			$destName = empty($avatar_hash) ? $destName : $path . '/' . $attachID . '_' . $avatar_hash . '.dat';
+			if (!is_array($modSettings['attachmentUploadDir']))
+				$modSettings['attachmentUploadDir'] = safe_unserialize($modSettings['attachmentUploadDir']);
+			$path = $modSettings['attachmentUploadDir'][$modSettings['currentAttachmentUploadDir']];
+		}
+		else
+			$path = $modSettings['attachmentUploadDir'];
+
+		// Remove the .tmp extension from the attachment.
+		if (rename($destName . '.tmp', empty($avatar_hash) ? $destName : $path . '/' . $attachID . '_' . $avatar_hash))
+		{
+			$destName = empty($avatar_hash) ? $destName : $path . '/' . $attachID . '_' . $avatar_hash;
 			list ($width, $height) = getimagesize($destName);
 			$mime_type = 'image/' . $ext;
 
@@ -127,16 +207,6 @@ function downloadAvatar($url, $memID, $max_width, $max_height)
 	}
 }
 
-/**
- * Create a thumbnail of the given source.
- *
- * @uses resizeImageFile() function to achieve the resize.
- *
- * @param string $source The name of the source image
- * @param int $max_width The maximum allowed width
- * @param int $max_height The maximum allowed height
- * @return boolean Whether the thumbnail creation was successful.
- */
 function createThumbnail($source, $max_width, $max_height)
 {
 	global $modSettings;
@@ -162,18 +232,12 @@ function createThumbnail($source, $max_width, $max_height)
 	}
 }
 
-/**
- * Used to re-econodes an image to a specified image format
- * - creates a copy of the file at the same location as fileName.
- * - the file would have the format preferred_format if possible, otherwise the default format is jpeg.
- * - the function makes sure that all non-essential image contents are disposed.
- *
- * @param string $fileName The path to the file
- * @param int $preferred_format The preferred format - 0 to automatically determine, 1 for gif, 2 for jpg, 3 for png, 6 for bmp and 15 for wbmp
- * @return boolean Whether the reencoding was successful
- */
 function reencodeImage($fileName, $preferred_format = 0)
 {
+	// There is nothing we can do without GD, sorry!
+	if (!checkGD())
+		return false;
+
 	if (!resizeImageFile($fileName, $fileName . '.tmp', null, null, $preferred_format))
 	{
 		if (file_exists($fileName . '.tmp'))
@@ -187,16 +251,10 @@ function reencodeImage($fileName, $preferred_format = 0)
 
 	if (!rename($fileName . '.tmp', $fileName))
 		return false;
+
+	return true;
 }
 
-/**
- * Searches through the file to see if there's potentially harmful non-binary content.
- * - if extensiveCheck is true, searches for asp/php short tags as well.
- *
- * @param string $fileName The path to the file
- * @param bool $extensiveCheck Whether to perform extensive checks
- * @return bool Whether the image appears to be safe
- */
 function checkImageContents($fileName, $extensiveCheck = false)
 {
 	$fp = fopen($fileName, 'rb');
@@ -211,9 +269,8 @@ function checkImageContents($fileName, $extensiveCheck = false)
 		// Though not exhaustive lists, better safe than sorry.
 		if (!empty($extensiveCheck))
 		{
-			// Paranoid check.  Use this if you have reason to distrust your host's security config.
-			// Will result in MANY false positives, and is not suitable for photography sites.
-			if (preg_match('~(iframe|\\<\\?|\\<%|html|eval|body|script\W|(?-i)[CFZ]WS[\x01-\x0E])~i', $prev_chunk . $cur_chunk) === 1)
+			// Paranoid check. Some like it that way.
+			if (preg_match('~(iframe|\\<\\?|\\<%|html|eval|body|script\W|[CF]WS[\x01-\x0C])~i', $prev_chunk . $cur_chunk) === 1)
 			{
 				fclose($fp);
 				return false;
@@ -221,9 +278,8 @@ function checkImageContents($fileName, $extensiveCheck = false)
 		}
 		else
 		{
-			// Check for potential infection - focus on clues for inline php & flash.
-			// Will result in significantly fewer false positives than the paranoid check.
-			if (preg_match('~(\\<\\?php\s|(?-i)[CFZ]WS[\x01-\x0E])~i', $prev_chunk . $cur_chunk) === 1)
+			// Check for potential infection
+			if (preg_match('~(iframe|(?<!cellTextIs)html|eval|body|script\W|[CF]WS[\x01-\x0C])~i', $prev_chunk . $cur_chunk) === 1)
 			{
 				fclose($fp);
 				return false;
@@ -236,12 +292,6 @@ function checkImageContents($fileName, $extensiveCheck = false)
 	return true;
 }
 
-/**
- * Sets a global $gd2 variable needed by some functions to determine
- * whether the GD2 library is present.
- *
- * @return bool Whether or not GD1 is available.
- */
 function checkGD()
 {
 	global $gd2;
@@ -256,71 +306,12 @@ function checkGD()
 	return true;
 }
 
-/**
- * Checks whether the Imagick class is present.
- *
- * @return bool Whether or not the Imagick extension is available.
- */
-function checkImagick()
-{
-	return class_exists('Imagick', false);
-}
-
-/**
- * Checks whether the MagickWand extension is present.
- *
- * @return bool Whether or not the MagickWand extension is available.
- */
- function checkMagickWand()
- {
- 	return function_exists('newMagickWand');
- }
-
-/**
- * See if we have enough memory to thumbnail an image
- *
- * @param array $sizes image size
- * @return bool Whether we do
- */
-function imageMemoryCheck($sizes)
-{
-	global $modSettings;
-
-	// doing the old 'set it and hope' way?
-	if (empty($modSettings['attachment_thumb_memory']))
-	{
-		setMemoryLimit('128M');
-		return true;
-	}
-
-	// Determine the memory requirements for this image, note: if you want to use an image formula W x H x bits/8 x channels x Overhead factor
-	// you will need to account for single bit images as GD expands them to an 8 bit and will greatly overun the calculated value.  The 5 is
-	// simply a shortcut of 8bpp, 3 channels, 1.66 overhead
-	$needed_memory = ($sizes[0] * $sizes[1] * 5);
-
-	// if we need more, lets try to get it
-	return setMemoryLimit($needed_memory, true);
-}
-
-/**
- * Resizes an image from a remote location or a local file.
- * Puts the resized image at the destination location.
- * The file would have the format preferred_format if possible,
- * otherwise the default format is jpeg.
- *
- * @param string $source The path to the source image
- * @param string $destination The path to the destination image
- * @param int $max_width The maximum allowed width
- * @param int $max_height The maximum allowed height
- * @param int $preferred_format - The preferred format (0 to use jpeg, 1 for gif, 2 to force jpeg, 3 for png, 6 for bmp and 15 for wbmp)
- * @return bool Whether it succeeded.
- */
 function resizeImageFile($source, $destination, $max_width, $max_height, $preferred_format = 0)
 {
 	global $sourcedir;
 
-	// Nothing to do without GD or IM/MW
-	if (!checkGD() && !checkImagick() && !checkMagickWand())
+	// Nothing to do without GD
+	if (!checkGD())
 		return false;
 
 	static $default_formats = array(
@@ -332,10 +323,13 @@ function resizeImageFile($source, $destination, $max_width, $max_height, $prefer
 	);
 
 	require_once($sourcedir . '/Subs-Package.php');
+	@ini_set('memory_limit', '90M');
+
+	$success = false;
 
 	// Get the image file, we have to work with something after all
 	$fp_destination = fopen($destination, 'wb');
-	if ($fp_destination && (substr($source, 0, 7) == 'http://' || substr($source, 0, 8) == 'https://'))
+	if ($fp_destination && substr($source, 0, 7) == 'http://')
 	{
 		$fileContents = fetch_web_data($source);
 
@@ -363,180 +357,99 @@ function resizeImageFile($source, $destination, $max_width, $max_height, $prefer
 	else
 		$sizes = array(-1, -1, -1);
 
-	// See if we have -or- can get the needed memory for this operation
-	// ImageMagick isn't subject to PHP's memory limits :)
-	if (!(checkIMagick() || checkMagickWand()) && checkGD() && !imageMemoryCheck($sizes))
-		return false;
+	// Gif? That might mean trouble if gif support is not available.
+	if ($sizes[2] == 1 && !function_exists('imagecreatefromgif') && function_exists('imagecreatefrompng'))
+	{
+		// Download it to the temporary file... use the special gif library... and save as png.
+		if ($img = @gif_loadFile($destination) && gif_outputAsPng($img, $destination))
+			$sizes[2] = 3;
+	}
 
 	// A known and supported format?
-	// @todo test PSD and gif.
-	if ((checkImagick() || checkMagickWand()) && isset($default_formats[$sizes[2]]))
-	{
-		return resizeImage(null, $destination, null, null, $max_width, $max_height, true, $preferred_format);
-	}
-	elseif (checkGD() && isset($default_formats[$sizes[2]]) && function_exists('imagecreatefrom' . $default_formats[$sizes[2]]))
+	if (isset($default_formats[$sizes[2]]) && function_exists('imagecreatefrom' . $default_formats[$sizes[2]]))
 	{
 		$imagecreatefrom = 'imagecreatefrom' . $default_formats[$sizes[2]];
 		if ($src_img = @$imagecreatefrom($destination))
 		{
-			return resizeImage($src_img, $destination, imagesx($src_img), imagesy($src_img), $max_width === null ? imagesx($src_img) : $max_width, $max_height === null ? imagesy($src_img) : $max_height, true, $preferred_format);
+			resizeImage($src_img, $destination, imagesx($src_img), imagesy($src_img), $max_width === null ? imagesx($src_img) : $max_width, $max_height === null ? imagesy($src_img) : $max_height, true, $preferred_format);
+			$success = true;
 		}
 	}
 
-	return false;
+	return $success;
 }
 
-/**
- * Resizes src_img proportionally to fit within max_width and max_height limits
- * if it is too large.
- * If GD2 is present, it'll use it to achieve better quality.
- * It saves the new image to destination_filename, as preferred_format
- * if possible, default is jpeg.
- * @uses Imagemagick (IMagick or MagickWand extension) or GD
- *
- * @param resource $src_img The source image
- * @param string $destName The path to the destination image
- * @param int $src_width The width of the source image
- * @param int $src_height The height of the source image
- * @param int $max_width The maximum allowed width
- * @param int $max_height The maximum allowed height
- * @param bool $force_resize = false Whether to forcibly resize it
- * @param int $preferred_format - 1 for gif, 2 for jpeg, 3 for png, 6 for bmp or 15 for wbmp
- * @return bool Whether the resize was successful
- */
 function resizeImage($src_img, $destName, $src_width, $src_height, $max_width, $max_height, $force_resize = false, $preferred_format = 0)
 {
 	global $gd2, $modSettings;
 
-	if (checkImagick() || checkMagickWand())
+	// Without GD, no image resizing at all.
+	if (!checkGD())
+		return false;
+
+	$success = false;
+
+	// Determine whether to resize to max width or to max height (depending on the limits.)
+	if (!empty($max_width) || !empty($max_height))
 	{
-		static $default_formats = array(
-			'1' => 'gif',
-			'2' => 'jpeg',
-			'3' => 'png',
-			'6' => 'bmp',
-			'15' => 'wbmp'
-		);
-		$preferred_format = empty($preferred_format) || !isset($default_formats[$preferred_format]) ? 2 : $preferred_format;
-
-		if (checkImagick())
+		if (!empty($max_width) && (empty($max_height) || $src_height * $max_width / $src_width <= $max_height))
 		{
-			$imagick = New Imagick($destName);
-			$src_width = empty($src_width) ? $imagick->getImageWidth() : $src_width;
-			$src_height = empty($src_height) ? $imagick->getImageHeight() : $src_height;
-			$dest_width = empty($max_width) ? $src_width : $max_width;
-			$dest_height = empty($max_height) ? $src_height : $max_height;
-
-			if ($default_formats[$preferred_format] == 'jpeg')
-				$imagick->setCompressionQuality(!empty($modSettings['avatar_jpeg_quality']) ? $modSettings['avatar_jpeg_quality'] : 82);
-
-			$imagick->setImageFormat($default_formats[$preferred_format]);
-			$imagick->resizeImage($dest_width, $dest_height, Imagick::FILTER_LANCZOS, 1, true);
-			$success = $imagick->writeImage($destName);
+			$dst_width = $max_width;
+			$dst_height = floor($src_height * $max_width / $src_width);
 		}
-		else
+		elseif (!empty($max_height))
 		{
-			$magick_wand = newMagickWand();
-			MagickReadImage($magick_wand, $destName);
-			$src_width = empty($src_width) ? MagickGetImageWidth($magick_wand) : $src_width;
-			$src_height = empty($src_height) ? MagickGetImageSize($magick_wand) : $src_height;
-			$dest_width = empty($max_width) ? $src_width : $max_width;
-			$dest_height = empty($max_height) ? $src_height : $max_height;
-
-			if ($default_formats[$preferred_format] == 'jpeg')
-				MagickSetCompressionQuality($magick_wand, !empty($modSettings['avatar_jpeg_quality']) ? $modSettings['avatar_jpeg_quality'] : 82);
-
-			MagickSetImageFormat($magick_wand, $default_formats[$preferred_format]);
-			MagickResizeImage($magick_wand, $dest_width, $dest_height, MW_LanczosFilter, 1, true);
-			$success = MagickWriteImage($magick_wand, $destName);
+			$dst_width = floor($src_width * $max_height / $src_height);
+			$dst_height = $max_height;
 		}
 
-		return !empty($success);
-	}
-	elseif (checkGD())
-	{
-		$success = false;
-
-		// Determine whether to resize to max width or to max height (depending on the limits.)
-		if (!empty($max_width) || !empty($max_height))
+		// Don't bother resizing if it's already smaller...
+		if (!empty($dst_width) && !empty($dst_height) && ($dst_width < $src_width || $dst_height < $src_height || $force_resize))
 		{
-			if (!empty($max_width) && (empty($max_height) || round($src_height * $max_width / $src_width) <= $max_height))
+			// (make a true color image, because it just looks better for resizing.)
+			if ($gd2)
 			{
-				$dst_width = $max_width;
-				$dst_height = round($src_height * $max_width / $src_width);
-			}
-			elseif (!empty($max_height))
-			{
-				$dst_width = round($src_width * $max_height / $src_height);
-				$dst_height = $max_height;
-			}
+				$dst_img = imagecreatetruecolor($dst_width, $dst_height);
 
-			// Don't bother resizing if it's already smaller...
-			if (!empty($dst_width) && !empty($dst_height) && ($dst_width < $src_width || $dst_height < $src_height || $force_resize))
-			{
-				// (make a true color image, because it just looks better for resizing.)
-				if ($gd2)
+				// Deal nicely with a PNG - because we can.
+				if ((!empty($preferred_format)) && ($preferred_format == 3))
 				{
-					$dst_img = imagecreatetruecolor($dst_width, $dst_height);
-
-					// Deal nicely with a PNG - because we can.
-					if ((!empty($preferred_format)) && ($preferred_format == 3))
-					{
-						imagealphablending($dst_img, false);
-						if (function_exists('imagesavealpha'))
-							imagesavealpha($dst_img, true);
-					}
+					imagealphablending($dst_img, false);
+					if (function_exists('imagesavealpha'))
+						imagesavealpha($dst_img, true);
 				}
-				else
-					$dst_img = imagecreate($dst_width, $dst_height);
-
-				// Resize it!
-				if ($gd2)
-					imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $dst_width, $dst_height, $src_width, $src_height);
-				else
-					imagecopyresamplebicubic($dst_img, $src_img, 0, 0, 0, 0, $dst_width, $dst_height, $src_width, $src_height);
 			}
 			else
-				$dst_img = $src_img;
+				$dst_img = imagecreate($dst_width, $dst_height);
+
+			// Resize it!
+			if ($gd2)
+				imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $dst_width, $dst_height, $src_width, $src_height);
+			else
+				imagecopyresamplebicubic($dst_img, $src_img, 0, 0, 0, 0, $dst_width, $dst_height, $src_width, $src_height);
 		}
 		else
 			$dst_img = $src_img;
-
-		// Save the image as ...
-		if (!empty($preferred_format) && ($preferred_format == 3) && function_exists('imagepng'))
-			$success = imagepng($dst_img, $destName);
-		elseif (!empty($preferred_format) && ($preferred_format == 1) && function_exists('imagegif'))
-			$success = imagegif($dst_img, $destName);
-		elseif (function_exists('imagejpeg'))
-			$success = imagejpeg($dst_img, $destName, !empty($modSettings['avatar_jpeg_quality']) ? $modSettings['avatar_jpeg_quality'] : 82);
-
-		// Free the memory.
-		imagedestroy($src_img);
-		if ($dst_img != $src_img)
-			imagedestroy($dst_img);
-
-		return $success;
 	}
 	else
-		// Without GD, no image resizing at all.
-		return false;
+		$dst_img = $src_img;
+
+	// Save the image as ...
+	if (!empty($preferred_format) && ($preferred_format == 3) && function_exists('imagepng'))
+		$success = imagepng($dst_img, $destName);
+	elseif (!empty($preferred_format) && ($preferred_format == 1) && function_exists('imagegif'))
+		$success = imagegif($dst_img, $destName);
+	elseif (function_exists('imagejpeg'))
+		$success = imagejpeg($dst_img, $destName);
+
+	// Free the memory.
+	imagedestroy($src_img);
+	if ($dst_img != $src_img)
+		imagedestroy($dst_img);
+
+	return $success;
 }
 
-/**
- * Copy image.
- * Used when imagecopyresample() is not available.
-
- * @param resource $dst_img The destination image - a GD image resource
- * @param resource $src_img The source image - a GD image resource
- * @param int $dst_x The "x" coordinate of the destination image
- * @param int $dst_y The "y" coordinate of the destination image
- * @param int $src_x The "x" coordinate of the source image
- * @param int $src_y The "y" coordinate of the source image
- * @param int $dst_w The width of the destination image
- * @param int $dst_h The height of the destination image
- * @param int $src_w The width of the destination image
- * @param int $src_h The height of the destination image
- */
 function imagecopyresamplebicubic($dst_img, $src_img, $dst_x, $dst_y, $src_x, $src_y, $dst_w, $dst_h, $src_w, $src_h)
 {
 	$palsize = imagecolorstotal($src_img);
@@ -586,14 +499,6 @@ function imagecopyresamplebicubic($dst_img, $src_img, $dst_x, $dst_y, $src_x, $s
 
 if (!function_exists('imagecreatefrombmp'))
 {
-	/**
-	 * It is set only if it doesn't already exist (for forwards compatiblity.)
-	 * It only supports uncompressed bitmaps.
-	 *
-	 * @param string $filename The name of the file
-	 * @return resource An image identifier representing the bitmap image
-	 * obtained from the given filename.
-	 */
 	function imagecreatefrombmp($filename)
 	{
 		global $gd2;
@@ -606,7 +511,7 @@ if (!function_exists('imagecreatefrombmp'))
 		$info = unpack('Vsize/Vwidth/Vheight/vplanes/vbits/Vcompression/Vimagesize/Vxres/Vyres/Vncolor/Vcolorimportant', fread($fp, 40));
 
 		if ($header['type'] != 0x4D42)
-			return false;
+			false;
 
 		if ($gd2)
 			$dst_img = imagecreatetruecolor($info['width'], $info['height']);
@@ -731,18 +636,9 @@ if (!function_exists('imagecreatefrombmp'))
 						imagesetpixel($dst_img, $x, $y, $palette[$byte & 15]);
 				}
 			}
-			elseif ($info['bits'] == 1)
+			else
 			{
-				$x = 0;
-				for ($j = 0; $j < $scan_line_size; $x++)
-				{
-					$byte = ord($scan_line{$j++});
-
-					imagesetpixel($dst_img, $x, $y, $palette[(($byte) & 128) != 0]);
-					for ($shift = 1; $shift < 8; $shift++) {
-						if (++$x < $info['width']) imagesetpixel($dst_img, $x, $y, $palette[(($byte << $shift) & 128) != 0]);
-					}
-				}
+				// Sorry, I'm just not going to do monochrome :P.
 			}
 		}
 
@@ -754,14 +650,18 @@ if (!function_exists('imagecreatefrombmp'))
 	}
 }
 
-/**
- * Writes a gif file to disk as a png file.
+function gif_loadFile($lpszFileName, $iIndex = 0)
+{
+	// The classes needed are in this file.
+	loadClassFile('Class-Graphics.php');
+	$gif = new gif_file();
 
- * @param resource $gif A gif image resource
- * @param string $lpszFileName The name of the file
- * @param int $background_color The background color
- * @return boolean Whether the operation was successful
- */
+	if (!$gif->loadFile($lpszFileName, $iIndex))
+		return false;
+
+	return $gif;
+}
+
 function gif_outputAsPng($gif, $lpszFileName, $background_color = -1)
 {
 	if (!isset($gif) || @get_class($gif) != 'cgif' || !$gif->loaded || $lpszFileName == '')
@@ -781,20 +681,14 @@ function gif_outputAsPng($gif, $lpszFileName, $background_color = -1)
 	return true;
 }
 
-/**
- * Show an image containing the visual verification code for registration.
- * Requires the GD extension.
- * Uses a random font for each letter from default_theme_dir/fonts.
- * Outputs a gif or a png (depending on whether gif ix supported).
- *
- * @param string $code The code to display
- * @return void|false False if something goes wrong.
- */
+// Create the image for the visual verification code.
 function showCodeImage($code)
 {
-	global $gd2, $settings, $user_info, $modSettings;
+	global $settings, $user_info, $modSettings;
 
-	// Note: The higher the value of visual_verification_type the harder the verification is - from 0 as disabled through to 4 as "Very hard".
+	/*
+		Note: The higher the value of visual_verification_type the harder the verification is - from 0 as disabled through to 4 as "Very hard".
+	*/
 
 	// What type are we going to be doing?
 	$imageType = $modSettings['visual_verification_type'];
@@ -830,6 +724,11 @@ function showCodeImage($code)
 	// Give the image a border?
 	$hasBorder = $simpleBGColor;
 
+	// Is this GD2? Needed for pixel size.
+	$testGD = get_extension_funcs('gd');
+	$gd2 = in_array('imagecreatetruecolor', $testGD) && function_exists('imagecreatetruecolor');
+	unset($testGD);
+
 	// The amount of pixels inbetween characters.
 	$character_spacing = 1;
 
@@ -858,14 +757,10 @@ function showCodeImage($code)
 	$font_dir = dir($settings['default_theme_dir'] . '/fonts');
 	$font_list = array();
 	$ttfont_list = array();
-	$endian = unpack('v', pack('S', 0x00FF)) === 0x00FF;
 	while ($entry = $font_dir->read())
 	{
 		if (preg_match('~^(.+)\.gdf$~', $entry, $matches) === 1)
-		{
-			if ($endian ^ (strpos($entry, '_end.gdf') === false))
-				$font_list[] = $entry;
-		}
+			$font_list[] = $entry;
 		elseif (preg_match('~^(.+)\.ttf$~', $entry, $matches) === 1)
 			$ttfont_list[] = $entry;
 	}
@@ -878,8 +773,8 @@ function showCodeImage($code)
 	{
 		$font_list = array($font_list[0]);
 		// Try use Screenge if we can - it looks good!
-		if (in_array('AnonymousPro.ttf', $ttfont_list))
-			$ttfont_list = array('AnonymousPro.ttf');
+		if (in_array('Screenge.ttf', $ttfont_list))
+			$ttfont_list = array('Screenge.ttf');
 		else
 			$ttfont_list = empty($ttfont_list) ? array() : array($ttfont_list[0]);
 
@@ -903,12 +798,7 @@ function showCodeImage($code)
 		$loaded_fonts[$font_index] = imageloadfont($settings['default_theme_dir'] . '/fonts/' . $font_list[$font_index]);
 
 	// Determine the dimensions of each character.
-	if ($imageType == 4 || $imageType == 5)
-		$extra = 80;
-	else
-		$extra = 45;
-
-	$total_width = $character_spacing * strlen($code) + $extra;
+	$total_width = $character_spacing * strlen($code) + 20;
 	$max_height = 0;
 	foreach ($characters as $char_index => $character)
 	{
@@ -939,11 +829,11 @@ function showCodeImage($code)
 	// Some squares/rectanges for new extreme level
 	if ($noiseType == 'extreme')
 	{
-		for ($i = 0; $i < mt_rand(1, 5); $i++)
+		for ($i = 0; $i < rand(1, 5); $i++)
 		{
-			$x1 = mt_rand(0, $total_width / 4);
+			$x1 = rand(0, $total_width / 4);
 			$x2 = $x1 + round(rand($total_width / 4, $total_width));
-			$y1 = mt_rand(0, $max_height);
+			$y1 = rand(0, $max_height);
 			$y2 = $y1 + round(rand(0, $max_height / 3));
 			imagefilledrectangle($code_image, $x1, $y1, $x2, $y2, mt_rand(0, 1) ? $fg_color : $randomness_color);
 		}
@@ -1119,14 +1009,7 @@ function showCodeImage($code)
 	die();
 }
 
-/**
- * Show a letter for the visual verification code.
- * Alternative function for showCodeImage() in case GD is missing.
- * Includes an image from a random sub directory of default_theme_dir/fonts.
- *
- * @param string $letter A letter to show as an image
- * @return void|false False if something went wrong
- */
+// Create a letter for the visual verification code.
 function showLetterImage($letter)
 {
 	global $settings;
@@ -1148,13 +1031,15 @@ function showLetterImage($letter)
 	$random_font = $font_list[array_rand($font_list)];
 
 	// Check if the given letter exists.
-	if (!file_exists($settings['default_theme_dir'] . '/fonts/' . $random_font . '/' . $letter . '.png'))
+	if (!file_exists($settings['default_theme_dir'] . '/fonts/' . $random_font . '/' . $letter . '.gif'))
 		return false;
 
 	// Include it!
-	header('Content-type: image/png');
-	include($settings['default_theme_dir'] . '/fonts/' . $random_font . '/' . $letter . '.png');
+	header('Content-type: image/gif');
+	include($settings['default_theme_dir'] . '/fonts/' . $random_font . '/' . $letter . '.gif');
 
 	// Nothing more to come.
 	die();
 }
+
+?>

@@ -159,7 +159,7 @@ function smfRegister(formID, passwordDifficultyLevel, regTextStrings)
 			stringIndex = 'password_valid';
 
 		// Set the image.
-		setVerificationImage(verificationFields['pwmain'][0], isValid, textStrings[stringIndex] ? textStrings[stringIndex] : '');
+		setVerificationImage(verificationFields['pwmain'][2], isValid, textStrings[stringIndex] ? textStrings[stringIndex] : '');
 		verificationFields['pwmain'][1].className = verificationFields['pwmain'][5] + ' ' + (isValid ? 'valid_input' : 'invalid_input');
 
 		// As this has changed the verification one may have too!
@@ -179,7 +179,7 @@ function smfRegister(formID, passwordDifficultyLevel, regTextStrings)
 		// Check and set valid status!
 		var isValid = verificationFields['pwmain'][1].value == verificationFields['pwverify'][1].value && refreshMainPassword(true);
 		var alt = textStrings[isValid == 1 ? 'password_valid' : 'password_no_match'] ? textStrings[isValid == 1 ? 'password_valid' : 'password_no_match'] : '';
-		setVerificationImage(verificationFields['pwverify'][0], isValid, alt);
+		setVerificationImage(verificationFields['pwverify'][2], isValid, alt);
 		verificationFields['pwverify'][1].className = verificationFields['pwverify'][5] + ' ' + (isValid ? 'valid_input' : 'invalid_input');
 
 		return true;
@@ -196,7 +196,7 @@ function smfRegister(formID, passwordDifficultyLevel, regTextStrings)
 			verificationFields['username'][1].className = verificationFields['username'][5];
 		// Check the image is correct.
 		var alt = textStrings['username_check'] ? textStrings['username_check'] : '';
-		setVerificationImage(verificationFields['username'][0], 'check', alt);
+		setVerificationImage(verificationFields['username'][2], 'check', alt);
 
 		// Check the password is still OK.
 		refreshMainPassword();
@@ -226,7 +226,7 @@ function smfRegister(formID, passwordDifficultyLevel, regTextStrings)
 
 		// Request a search on that username.
 		checkName = curUsername.php_to8bit().php_urlencode();
-		getXMLDocument(smf_prepareScriptUrl(smf_scripturl) + 'action=signup;sa=usernamecheck;xml;username=' + checkName, checkUsernameCallback);
+		getXMLDocument(smf_prepareScriptUrl(smf_scripturl) + 'action=register;sa=usernamecheck;xml;username=' + checkName, checkUsernameCallback);
 
 		return true;
 	}
@@ -243,36 +243,24 @@ function smfRegister(formID, passwordDifficultyLevel, regTextStrings)
 		var alt = textStrings[isValid == 1 ? 'username_valid' : 'username_invalid'] ? textStrings[isValid == 1 ? 'username_valid' : 'username_invalid'] : '';
 
 		verificationFields['username'][1].className = verificationFields['username'][5] + ' ' + (isValid == 1 ? 'valid_input' : 'invalid_input');
-		setVerificationImage(verificationFields['username'][0], isValid == 1, alt);
+		setVerificationImage(verificationFields['username'][2], isValid == 1, alt);
 
 		ajax_indicator(false);
 	}
 
 	// Set the image to be the correct type.
-	function setVerificationImage(fieldID, imageIcon, alt)
+	function setVerificationImage(imageHandle, imageIcon, alt)
 	{
-		if (!fieldID)
+		if (!imageHandle)
 			return false;
 		if (!alt)
 			alt = '*';
 
-		$('#' + fieldID + '_img').removeClass('valid check invalid').attr('alt', alt).attr('title', alt);
-		if (imageIcon)
-			$('#' + fieldID + '_img').addClass(imageIcon == 'check' ? 'check' : 'valid');
-		else
-			$('#' + fieldID + '_img').addClass('invalid');
+		var curImage = imageIcon ? (imageIcon == 'check' ? 'field_check.gif' : 'field_valid.gif') : 'field_invalid.gif';
+		imageHandle.src = smf_images_url + '/icons/' + curImage;
+		imageHandle.alt = alt;
+		imageHandle.title = alt;
 
 		return true;
 	}
-}
-
-function onCheckChange()
-{
-	if (document.forms.postForm.emailActivate.checked || document.forms.postForm.password.value == '')
-	{
-		document.forms.postForm.emailPassword.disabled = true;
-		document.forms.postForm.emailPassword.checked = true;
-	}
-	else
-		document.forms.postForm.emailPassword.disabled = false;
 }

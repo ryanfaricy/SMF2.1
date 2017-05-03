@@ -3,150 +3,218 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * The template for sending newsletters
- */
-function template_email_members()
+// Form for editing current news on the site.
+function template_edit_news()
 {
-	global $context, $txt, $scripturl;
-
-	// Are we done sending the newsletter?
-	if (!empty($context['newsletter_sent']))
-		echo '
-	<div class="infobox">', $txt['admin_news_newsletter_' . $context['newsletter_sent']], '</div>';
+	global $context, $settings, $options, $scripturl, $txt;
 
 	echo '
 	<div id="admincenter">
-		<form action="', $scripturl, '?action=admin;area=news;sa=mailingcompose" method="post" id="admin_newsletters" class="flow_hidden" accept-charset="', $context['character_set'], '">
+		<form action="', $scripturl, '?action=admin;area=news;sa=editnews" method="post" accept-charset="', $context['character_set'], '" name="postmodify" id="postmodify">
+			<table class="table_grid" width="100%">
+				<thead>
+					<tr class="catbg">
+						<th class="first_th" width="50%">', $txt['admin_edit_news'], '</th>
+						<th align="left" width="45%">', $txt['preview'], '</th>
+						<th class="last_th" align="center" width="5%"><input type="checkbox" class="input_check" onclick="invertAll(this, this.form);" /></th>
+					</tr>
+				</thead>
+				<tbody>';
+
+	// Loop through all the current news items so you can edit/remove them.
+	foreach ($context['admin_current_news'] as $admin_news)
+		echo '
+					<tr class="windowbg2">
+						<td align="center">
+
+							<div style="margin-bottom: 2ex;"><textarea rows="3" cols="65" name="news[]" style="' . ($context['browser']['is_ie8'] ? 'width: 635px; max-width: 85%; min-width: 85%' : 'width: 85%') . ';">', $admin_news['unparsed'], '</textarea></div>
+						</td><td align="left" valign="top">
+							<div style="overflow: auto; width: 100%; height: 10ex;">', $admin_news['parsed'], '</div>
+						</td><td align="center">
+							<input type="checkbox" name="remove[]" value="', $admin_news['id'], '" class="input_check" />
+						</td>
+					</tr>';
+
+	// This provides an empty text box to add a news item to the site.
+	echo '
+					<tr id="moreNews" class="windowbg2" style="display: none;">
+						<td align="center">
+							<div id="moreNewsItems"></div>
+						</td>
+						<td align="center">
+						</td>
+						<td align="center">
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<div class="floatleftpadding">
+				<div id="moreNewsItems_link" style="display: none;"><a href="javascript:void(0);" onclick="addNewsItem(); return false;">', $txt['editnews_clickadd'], '</a></div>
+				<script type="text/javascript"><!-- // --><![CDATA[
+					document.getElementById("moreNewsItems_link").style.display = "";
+					function addNewsItem()
+					{
+						document.getElementById("moreNews").style.display = "";
+						setOuterHTML(document.getElementById("moreNewsItems"), \'<div style="margin-bottom: 2ex;"><textarea rows="3" cols="65" name="news[]" style="' . ($context['browser']['is_ie8'] ? 'width: 635px; max-width: 85%; min-width: 85%' : 'width: 85%') . ';"><\' + \'/textarea><\' + \'/div><div id="moreNewsItems"><\' + \'/div>\');
+					}
+				// ]]></script>
+				<noscript>
+					<div style="margin-bottom: 2ex;"><textarea rows="3" cols="65" style="' . ($context['browser']['is_ie8'] ? 'width: 635px; max-width: 85%; min-width: 85%' : 'width: 85%') . ';" name="news[]"></textarea></div>
+				</noscript>
+			</div>
+			<div class="floatrightpadding">
+				<input type="submit" name="save_items" value="', $txt['save'], '" class="button_submit" /> <input type="submit" name="delete_selection" value="', $txt['editnews_remove_selected'], '" onclick="return confirm(\'', $txt['editnews_remove_confirm'], '\');" class="button_submit" />
+			</div>
+			<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
+		</form>
+	</div>
+	<br class="clear" />';
+}
+
+function template_email_members()
+{
+	global $context, $settings, $options, $txt, $scripturl;
+
+	// This is some javascript for the simple/advanced toggling stuff.
+	echo '
+	<script type="text/javascript"><!-- // --><![CDATA[
+		function toggleAdvanced(mode)
+		{
+			// What styles are we doing?
+			var divStyle = mode ? "" : "none";
+
+			document.getElementById("advanced_settings_div").style.display = divStyle;
+			document.getElementById("gosimple").style.display = divStyle;
+			document.getElementById("goadvanced").style.display = mode ? "none" : "";
+		}
+	// ]]></script>';
+
+	echo '
+	<div id="admincenter">
+		<form action="', $scripturl, '?action=admin;area=news;sa=mailingcompose" method="post" class="flow_hidden" accept-charset="', $context['character_set'], '">
 			<div class="cat_bar">
 				<h3 class="catbg">', $txt['admin_newsletters'], '</h3>
 			</div>
-			<div class="information noup">
+			<div class="information">
 				', $txt['admin_news_select_recipients'], '
 			</div>
-			<div class="windowbg2 noup">
-				<dl class="settings">
-					<dt>
-						<strong>', $txt['admin_news_select_group'], ':</strong><br>
-						<span class="smalltext">', $txt['admin_news_select_group_desc'], '</span>
-					</dt>
-					<dd>';
+			<div class="windowbg">
+				<span class="topslice"><span></span></span>
+				<div class="content">
+					<dl class="settings">
+						<dt>
+							<strong>', $txt['admin_news_select_group'], ':</strong><br />
+							<span class="smalltext">', $txt['admin_news_select_group_desc'], '</span>
+						</dt>
+						<dd>';
 
 	foreach ($context['groups'] as $group)
 				echo '
-						<label for="groups_', $group['id'], '"><input type="checkbox" name="groups[', $group['id'], ']" id="groups_', $group['id'], '" value="', $group['id'], '" checked class="input_check"> ', $group['name'], '</label> <em>(', $group['member_count'], ')</em><br>';
+							<label for="groups_', $group['id'], '"><input type="checkbox" name="groups[', $group['id'], ']" id="groups_', $group['id'], '" value="', $group['id'], '" checked="checked" class="input_check" /> ', $group['name'], '</label> <em>(', $group['member_count'], ')</em><br />';
 
 	echo '
-						<br>
-						<label for="checkAllGroups"><input type="checkbox" id="checkAllGroups" checked onclick="invertAll(this, this.form, \'groups\');" class="input_check"> <em>', $txt['check_all'], '</em></label>';
+							<br />
+							<label for="checkAllGroups"><input type="checkbox" id="checkAllGroups" checked="checked" onclick="invertAll(this, this.form, \'groups\');" class="input_check" /> <em>', $txt['check_all'], '</em></label>';
 
 	echo '
-					</dd>
-				</dl>
-				<div id="advanced_panel_header" class="title_bar">
-					<h3 class="titlebg">
-						<span id="advanced_panel_toggle" class="toggle_down floatright" style="display: none;"></span>
-						<a href="#" id="advanced_panel_link">', $txt['advanced'], '</a>
-					</h3>
+						</dd>
+					</dl><br class="clear" />
 				</div>
-				<div id="advanced_panel_div" class="padding">
+				<span class="botslice"><span></span></span>
+			</div>
+			<br />
+
+			<div class="cat_bar">
+				<h3 class="catbg" id="advanced_select_div" style="display: none;">
+					<span class="ie6_header floatleft">
+						<a href="#" onclick="toggleAdvanced(1); return false;" id="goadvanced"><img src="', $settings['images_url'], '/selected.gif" alt="', $txt['advanced'], '" />&nbsp;<strong>', $txt['advanced'], '</strong></a>
+						<a href="#" onclick="toggleAdvanced(0); return false;" id="gosimple" style="display: none;"><img src="', $settings['images_url'], '/sort_down.gif" alt="', $txt['simple'], '" />&nbsp;<strong>', $txt['simple'], '</strong></a>
+					</span>
+				</h3>
+			</div>
+
+			<div class="windowbg2" id="advanced_settings_div" style="display: none;">
+				<span class="topslice"><span></span></span>
+				<div class="content">
 					<dl class="settings">
 						<dt>
-							<strong>', $txt['admin_news_select_email'], ':</strong><br>
+							<strong>', $txt['admin_news_select_email'], ':</strong><br />
 							<span class="smalltext">', $txt['admin_news_select_email_desc'], '</span>
 						</dt>
 						<dd>
-							<textarea name="emails" rows="5" cols="30" style="width: 98%;"></textarea>
+							<textarea name="emails" rows="5" cols="30" style="' . ($context['browser']['is_ie8'] ? 'width: 635px; max-width: 98%; min-width: 98%' : 'width: 98%') . ';"></textarea>
 						</dd>
 						<dt>
-							<strong>', $txt['admin_news_select_members'], ':</strong><br>
+							<strong>', $txt['admin_news_select_members'], ':</strong><br />
 							<span class="smalltext">', $txt['admin_news_select_members_desc'], '</span>
 						</dt>
 						<dd>
-							<input type="text" name="members" id="members" value="" size="30" class="input_text">
+							<input type="text" name="members" id="members" value="" size="30" class="input_text" />
 							<span id="members_container"></span>
 						</dd>
 					</dl>
-					<hr class="bordercolor">
+					<hr class="bordercolor" />
 					<dl class="settings">
 						<dt>
-							<strong>', $txt['admin_news_select_excluded_groups'], ':</strong><br>
+							<strong>', $txt['admin_news_select_excluded_groups'], ':</strong><br />
 							<span class="smalltext">', $txt['admin_news_select_excluded_groups_desc'], '</span>
 						</dt>
 						<dd>';
 
 	foreach ($context['groups'] as $group)
 				echo '
-							<label for="exclude_groups_', $group['id'], '"><input type="checkbox" name="exclude_groups[', $group['id'], ']" id="exclude_groups_', $group['id'], '" value="', $group['id'], '" class="input_check"> ', $group['name'], '</label> <em>(', $group['member_count'], ')</em><br>';
+							<label for="exclude_groups_', $group['id'], '"><input type="checkbox" name="exclude_groups[', $group['id'], ']" id="exclude_groups_', $group['id'], '" value="', $group['id'], '" class="input_check" /> ', $group['name'], '</label> <em>(', $group['member_count'], ')</em><br />';
 
 	echo '
-							<br>
-							<label for="checkAllGroupsExclude"><input type="checkbox" id="checkAllGroupsExclude" onclick="invertAll(this, this.form, \'exclude_groups\');" class="input_check"> <em>', $txt['check_all'], '</em></label><br>
+							<br />
+							<label for="checkAllGroupsExclude"><input type="checkbox" id="checkAllGroupsExclude" onclick="invertAll(this, this.form, \'exclude_groups\');" class="input_check" /> <em>', $txt['check_all'], '</em></label><br />
 						</dd>
 						<dt>
-							<strong>', $txt['admin_news_select_excluded_members'], ':</strong><br>
+							<strong>', $txt['admin_news_select_excluded_members'], ':</strong><br />
 							<span class="smalltext">', $txt['admin_news_select_excluded_members_desc'], '</span>
 						</dt>
-							<dd>
-							<input type="text" name="exclude_members" id="exclude_members" value="" size="30" class="input_text">
+						<dd>
+							<input type="text" name="exclude_members" id="exclude_members" value="" size="30" class="input_text" />
 							<span id="exclude_members_container"></span>
 						</dd>
 					</dl>
-					<hr class="bordercolor">
+					<hr class="bordercolor" />
 					<dl class="settings">
 						<dt>
-							<label for="email_force"><strong>', $txt['admin_news_select_override_notify'], ':</strong></label><br>
+							<label for="email_force"><strong>', $txt['admin_news_select_override_notify'], ':</strong></label><br />
 							<span class="smalltext">', $txt['email_force'], '</span>
 						</dt>
 						<dd>
-							<input type="checkbox" name="email_force" id="email_force" value="1" class="input_check">
+							<input type="checkbox" name="email_force" id="email_force" value="1" class="input_check" />
 						</dd>
-					</dl>
+					</dl><br class="clear" />
 				</div>
-				<br>
-				<input type="submit" value="', $txt['admin_next'], '" class="button_submit">
-				<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
+				<span class="botslice"><span></span></span>
+			</div>
+			<div class="righttext">
+				<input type="submit" value="', $txt['admin_next'], '" class="button_submit" />
+				<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
 			</div>
 		</form>
-	</div>';
+	</div>
+	<br class="clear" />';
 
-	// This is some javascript for the simple/advanced toggling and member suggest
+	// Make the javascript stuff visible.
 	echo '
-	<script>
-		var oAdvancedPanelToggle = new smc_Toggle({
-			bToggleEnabled: true,
-			bCurrentlyCollapsed: true,
-			aSwappableContainers: [
-				\'advanced_panel_div\'
-			],
-			aSwapImages: [
-				{
-					sId: \'advanced_panel_toggle\',
-					altExpanded: ', JavaScriptEscape($txt['hide']), ',
-					altCollapsed: ', JavaScriptEscape($txt['show']), '
-				}
-			],
-			aSwapLinks: [
-				{
-					sId: \'advanced_panel_link\',
-					msgExpanded: ', JavaScriptEscape($txt['advanced']), ',
-					msgCollapsed: ', JavaScriptEscape($txt['advanced']), '
-				}
-			]
-		});
-	</script>
-	<script>
+	<script type="text/javascript" src="', $settings['default_theme_url'], '/scripts/suggest.js?fin20"></script>
+	<script type="text/javascript"><!-- // --><![CDATA[
+		document.getElementById("advanced_select_div").style.display = "";
 		var oMemberSuggest = new smc_AutoSuggest({
 			sSelf: \'oMemberSuggest\',
-			sSessionId: smf_session_id,
-			sSessionVar: smf_session_var,
+			sSessionId: \'', $context['session_id'], '\',
+			sSessionVar: \'', $context['session_var'], '\',
 			sSuggestId: \'members\',
 			sControlId: \'members\',
 			sSearchType: \'member\',
@@ -171,253 +239,101 @@ function template_email_members()
 			sItemListContainerId: \'exclude_members_container\',
 			aListItems: []
 		});
-	</script>';
+	// ]]></script>';
 }
 
-/**
- * The form for composing a newsletter
- */
 function template_email_members_compose()
 {
-	global $context, $settings, $txt, $scripturl;
-
-	echo '
-		<div id="preview_section"', isset($context['preview_message']) ? '' : ' style="display: none;"', '>
-			<div class="cat_bar">
-				<h3 class="catbg">
-					<span id="preview_subject">', empty($context['preview_subject']) ? '' : $context['preview_subject'], '</span>
-				</h3>
-			</div>
-			<div class="windowbg noup">
-				<div class="post" id="preview_body">
-					', empty($context['preview_message']) ? '<br>' : $context['preview_message'], '
-				</div>
-			</div>
-		</div><br>';
+	global $context, $settings, $options, $txt, $scripturl;
 
 	echo '
 	<div id="admincenter">
-		<form name="newsmodify" action="', $scripturl, '?action=admin;area=news;sa=mailingsend" method="post" accept-charset="', $context['character_set'], '">
+		<form action="', $scripturl, '?action=admin;area=news;sa=mailingsend" method="post" accept-charset="', $context['character_set'], '">
 			<div class="cat_bar">
 				<h3 class="catbg">
-					<a href="', $scripturl, '?action=helpadmin;help=email_members" onclick="return reqOverlayDiv(this.href);" class="help"><span class="generic_icons help" title="', $txt['help'], '"></span></a> ', $txt['admin_newsletters'], '
+					<a href="', $scripturl, '?action=helpadmin;help=email_members" onclick="return reqWin(this.href);" class="help"><img src="', $settings['images_url'], '/helptopics.gif" alt="', $txt['help'], '" class="icon" /></a> ', $txt['admin_newsletters'], '
 				</h3>
 			</div>
 			<div class="information">
 				', $txt['email_variables'], '
 			</div>
 			<div class="windowbg">
-				<div class="', empty($context['error_type']) || $context['error_type'] != 'serious' ? 'noticebox' : 'errorbox', '"', empty($context['post_error']['messages']) ? ' style="display: none"' : '', ' id="errors">
-					<dl>
-						<dt>
-							<strong id="error_serious">', $txt['error_while_submitting'], '</strong>
-						</dt>
-						<dd class="error" id="error_list">
-							', empty($context['post_error']['messages']) ? '' : implode('<br>', $context['post_error']['messages']), '
-						</dd>
-					</dl>
+				<span class="topslice"><span></span></span>
+				<div class="content">
+					<p>
+						<input type="text" name="subject" size="60" value="', $context['default_subject'], '" class="input_text" />
+					</p>
+					<p>
+						<textarea cols="70" rows="9" name="message" class="editor">', $context['default_message'], '</textarea>
+					</p>
+					<ul class="reset">
+						<li><label for="send_pm"><input type="checkbox" name="send_pm" id="send_pm" class="input_check" onclick="if (this.checked && ', $context['total_emails'], ' != 0 && !confirm(\'', $txt['admin_news_cannot_pm_emails_js'], '\')) return false; this.form.parse_html.disabled = this.checked; this.form.send_html.disabled = this.checked; " /> ', $txt['email_as_pms'], '</label></li>
+						<li><label for="send_html"><input type="checkbox" name="send_html" id="send_html" class="input_check" onclick="this.form.parse_html.disabled = !this.checked;" /> ', $txt['email_as_html'], '</label></li>
+						<li><label for="parse_html"><input type="checkbox" name="parse_html" id="parse_html" checked="checked" disabled="disabled" class="input_check" /> ', $txt['email_parsed_html'], '</label></li>
+					</ul>
+					<p>
+						<input type="submit" value="', $txt['sendtopic_send'], '" class="button_submit" />
+					</p>
 				</div>
-				<dl id="post_header">
-					<dt class="clear_left">
-						<span', (isset($context['post_error']['no_subject']) ? ' class="error"' : ''), ' id="caption_subject">', $txt['subject'], ':</span>
-					</dt>
-					<dd id="pm_subject">
-						<input type="text" name="subject" value="', $context['subject'], '" tabindex="', $context['tabindex']++, '" size="60" maxlength="60"', isset($context['post_error']['no_subject']) ? ' class="error"' : ' class="input_text"', '/>
-					</dd>
-				</dl><hr class="clear">
-				<div id="bbcBox_message"></div>';
-
-	// What about smileys?
-	if (!empty($context['smileys']['postform']) || !empty($context['smileys']['popup']))
-		echo '
-				<div id="smileyBox_message"></div>';
-
-	// Show BBC buttons, smileys and textbox.
-	echo '
-				', template_control_richedit($context['post_box_name'], 'smileyBox_message', 'bbcBox_message');
-
-					echo '
-				<ul>
-					<li><label for="send_pm"><input type="checkbox" name="send_pm" id="send_pm"', !empty($context['send_pm']) ? ' checked' : '', ' class="input_check" onclick="checkboxes_status(this);"> ', $txt['email_as_pms'], '</label></li>
-					<li><label for="send_html"><input type="checkbox" name="send_html" id="send_html"', !empty($context['send_html']) ? ' checked' : '', ' class="input_check" onclick="checkboxes_status(this);"> ', $txt['email_as_html'], '</label></li>
-					<li><label for="parse_html"><input type="checkbox" name="parse_html" id="parse_html" checked disabled class="input_check"> ', $txt['email_parsed_html'], '</label></li>
-				</ul>
-				<br class="clear_right">
-				<span id="post_confirm_buttons">
-					', template_control_richedit_buttons($context['post_box_name']), '
-				</span>
+				<span class="botslice"><span></span></span>
 			</div>
-			<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-			<input type="hidden" name="email_force" value="', $context['email_force'], '">
-			<input type="hidden" name="total_emails" value="', $context['total_emails'], '">';
+			<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
+			<input type="hidden" name="email_force" value="', $context['email_force'], '" />
+			<input type="hidden" name="total_emails" value="', $context['total_emails'], '" />
+			<input type="hidden" name="max_id_member" value="', $context['max_id_member'], '" />';
 
 	foreach ($context['recipients'] as $key => $values)
 		echo '
-			<input type="hidden" name="', $key, '" value="', implode(($key == 'emails' ? ';' : ','), $values), '">';
+			<input type="hidden" name="', $key, '" value="', implode(($key == 'emails' ? ';' : ','), $values), '" />';
 
 	echo '
-		<script>';
-	// The functions used to preview a posts without loading a new page.
-	echo '
-			var txt_preview_title = "', $txt['preview_title'], '";
-			var txt_preview_fetch = "', $txt['preview_fetch'], '";
-			function previewPost()
-			{
-				if (window.XMLHttpRequest)
-				{
-					// Opera didn\'t support setRequestHeader() before 8.01.
-					// @todo Remove support for old browsers
-					if (\'opera\' in window)
-					{
-						var test = new XMLHttpRequest();
-						if (!(\'setRequestHeader\' in test))
-							return submitThisOnce(document.forms.newsmodify);
-					}
-					// @todo Currently not sending poll options and option checkboxes.
-					var x = new Array();
-					var textFields = [\'subject\', ', JavaScriptEscape($context['post_box_name']), '];
-					var checkboxFields = [\'send_html\', \'send_pm\'];
-
-					for (var i = 0, n = textFields.length; i < n; i++)
-						if (textFields[i] in document.forms.newsmodify)
-						{
-							// Handle the WYSIWYG editor.
-							if (textFields[i] == ', JavaScriptEscape($context['post_box_name']), ' && ', JavaScriptEscape('oEditorHandle_' . $context['post_box_name']), ' in window && oEditorHandle_', $context['post_box_name'], '.bRichTextEnabled)
-								x[x.length] = \'message_mode=1&\' + textFields[i] + \'=\' + oEditorHandle_', $context['post_box_name'], '.getText(false).replace(/&#/g, \'&#38;#\').php_to8bit().php_urlencode();
-							else
-								x[x.length] = textFields[i] + \'=\' + document.forms.newsmodify[textFields[i]].value.replace(/&#/g, \'&#38;#\').php_to8bit().php_urlencode();
-						}
-					for (var i = 0, n = checkboxFields.length; i < n; i++)
-						if (checkboxFields[i] in document.forms.newsmodify && document.forms.newsmodify.elements[checkboxFields[i]].checked)
-							x[x.length] = checkboxFields[i] + \'=\' + document.forms.newsmodify.elements[checkboxFields[i]].value;
-
-					x[x.length] = \'item=newsletterpreview\';
-
-					sendXMLDocument(smf_prepareScriptUrl(smf_scripturl) + \'action=xmlhttp;sa=previews;xml\', x.join(\'&\'), onDocSent);
-
-					document.getElementById(\'preview_section\').style.display = \'\';
-					setInnerHTML(document.getElementById(\'preview_subject\'), txt_preview_title);
-					setInnerHTML(document.getElementById(\'preview_body\'), txt_preview_fetch);
-
-					return false;
-				}
-				else
-					return submitThisOnce(document.forms.newsmodify);
-			}
-			function onDocSent(XMLDoc)
-			{
-				if (!XMLDoc)
-				{
-					document.forms.newsmodify.preview.onclick = new function ()
-					{
-						return true;
-					}
-					document.forms.newsmodify.preview.click();
-				}
-
-				// Show the preview section.
-				var preview = XMLDoc.getElementsByTagName(\'smf\')[0].getElementsByTagName(\'preview\')[0];
-				setInnerHTML(document.getElementById(\'preview_subject\'), preview.getElementsByTagName(\'subject\')[0].firstChild.nodeValue);
-
-				var bodyText = \'\';
-				for (var i = 0, n = preview.getElementsByTagName(\'body\')[0].childNodes.length; i < n; i++)
-					bodyText += preview.getElementsByTagName(\'body\')[0].childNodes[i].nodeValue;
-
-				setInnerHTML(document.getElementById(\'preview_body\'), bodyText);
-				document.getElementById(\'preview_body\').className = \'post\';
-
-				// Show a list of errors (if any).
-				var errors = XMLDoc.getElementsByTagName(\'smf\')[0].getElementsByTagName(\'errors\')[0];
-				var errorList = new Array();
-				for (var i = 0, numErrors = errors.getElementsByTagName(\'error\').length; i < numErrors; i++)
-					errorList[errorList.length] = errors.getElementsByTagName(\'error\')[i].firstChild.nodeValue;
-				document.getElementById(\'errors\').style.display = numErrors == 0 ? \'none\' : \'\';
-				setInnerHTML(document.getElementById(\'error_list\'), numErrors == 0 ? \'\' : errorList.join(\'<br>\'));
-
-				// Adjust the color of captions if the given data is erroneous.
-				var captions = errors.getElementsByTagName(\'caption\');
-				for (var i = 0, numCaptions = errors.getElementsByTagName(\'caption\').length; i < numCaptions; i++)
-					if (document.getElementById(\'caption_\' + captions[i].getAttribute(\'name\')))
-						document.getElementById(\'caption_\' + captions[i].getAttribute(\'name\')).className = captions[i].getAttribute(\'class\');
-
-				if (errors.getElementsByTagName(\'post_error\').length == 1)
-					document.forms.newsmodify.', $context['post_box_name'], '.style.border = \'1px solid red\';
-				else if (document.forms.newsmodify.', $context['post_box_name'], '.style.borderColor == \'red\' || document.forms.newsmodify.', $context['post_box_name'], '.style.borderColor == \'red red red red\')
-				{
-					if (\'runtimeStyle\' in document.forms.newsmodify.', $context['post_box_name'], ')
-						document.forms.newsmodify.', $context['post_box_name'], '.style.borderColor = \'\';
-					else
-						document.forms.newsmodify.', $context['post_box_name'], '.style.border = null;
-				}
-				location.hash = \'#\' + \'preview_section\';
-			}';
-
-	echo '
-		</script>';
-
-	echo '
-		<script>
-			function checkboxes_status (item)
-			{
-				if (item.id == \'send_html\')
-					document.getElementById(\'parse_html\').disabled = !document.getElementById(\'parse_html\').disabled;
-				if (item.id == \'send_pm\')
-				{
-					if (!document.getElementById(\'send_html\').checked)
-						document.getElementById(\'parse_html\').disabled = true;
-					else
-						document.getElementById(\'parse_html\').disabled = false;
-					document.getElementById(\'send_html\').disabled = !document.getElementById(\'send_html\').disabled;
-				}
-			}
-		</script>
 		</form>
-	</div>';
+	</div>
+	<br class="clear" />';
 }
 
-/**
- * The page shown while the newsletter is being sent
- */
 function template_email_members_send()
 {
-	global $context, $settings, $txt, $scripturl;
+	global $context, $settings, $options, $txt, $scripturl;
 
 	echo '
 	<div id="admincenter">
 		<form action="', $scripturl, '?action=admin;area=news;sa=mailingsend" method="post" accept-charset="', $context['character_set'], '" name="autoSubmit" id="autoSubmit">
 			<div class="cat_bar">
 				<h3 class="catbg">
-					<a href="', $scripturl, '?action=helpadmin;help=email_members" onclick="return reqOverlayDiv(this.href);" class="help"><span class="generic_icons help" title="', $txt['help'], '"></span></a> ', $txt['admin_newsletters'], '
+					<a href="', $scripturl, '?action=helpadmin;help=email_members" onclick="return reqWin(this.href);" class="help"><img src="', $settings['images_url'], '/helptopics.gif" alt="', $txt['help'], '" align="top" /></a> ', $txt['admin_newsletters'], '
 				</h3>
 			</div>
 			<div class="windowbg">
-				<div class="progress_bar">
-					<div class="full_bar">', $context['percentage_done'], '% ', $txt['email_done'], '</div>
-					<div class="green_percent" style="width: ', $context['percentage_done'], '%;">&nbsp;</div>
-				</div>
-				<hr>
-				<input type="submit" name="b" value="', $txt['email_continue'], '" class="button_submit">
-				<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '">
-				<input type="hidden" name="subject" value="', $context['subject'], '">
-				<input type="hidden" name="message" value="', $context['message'], '">
-				<input type="hidden" name="start" value="', $context['start'], '">
-				<input type="hidden" name="total_members" value="', $context['total_members'], '">
-				<input type="hidden" name="total_emails" value="', $context['total_emails'], '">
-				<input type="hidden" name="send_pm" value="', $context['send_pm'], '">
-				<input type="hidden" name="send_html" value="', $context['send_html'], '">
-				<input type="hidden" name="parse_html" value="', $context['parse_html'], '">';
+				<span class="topslice"><span></span></span>
+				<div class="content">
+					<p>
+						<strong>', $context['percentage_done'], '% ', $txt['email_done'], '</strong>
+					</p>
+					<input type="submit" name="b" value="', $txt['email_continue'], '" class="button_submit" />
+					<input type="hidden" name="', $context['session_var'], '" value="', $context['session_id'], '" />
+					<input type="hidden" name="subject" value="', $context['subject'], '" />
+					<input type="hidden" name="message" value="', $context['message'], '" />
+					<input type="hidden" name="start" value="', $context['start'], '" />
+					<input type="hidden" name="total_emails" value="', $context['total_emails'], '" />
+					<input type="hidden" name="max_id_member" value="', $context['max_id_member'], '" />
+					<input type="hidden" name="send_pm" value="', $context['send_pm'], '" />
+					<input type="hidden" name="send_html" value="', $context['send_html'], '" />
+					<input type="hidden" name="parse_html" value="', $context['parse_html'], '" />';
 
 	// All the things we must remember!
 	foreach ($context['recipients'] as $key => $values)
 		echo '
-				<input type="hidden" name="', $key, '" value="', implode(($key == 'emails' ? ';' : ','), $values), '">';
+					<input type="hidden" name="', $key, '" value="', implode(($key == 'emails' ? ';' : ','), $values), '" />';
 
 	echo '
+				</div>
+				<span class="botslice"><span></span></span>
 			</div>
 		</form>
 	</div>
-
-	<script>
+	<br class="clear" />
+	<script type="text/javascript"><!-- // --><![CDATA[
 		var countdown = 2;
 		doAutoSubmit();
 
@@ -433,19 +349,7 @@ function template_email_members_send()
 
 			setTimeout("doAutoSubmit();", 1000);
 		}
-	</script>';
+	// ]]></script>';
 }
 
-/**
- * The settings page.
- */
-function template_news_lists()
-{
-	global $context, $txt;
-
-	if (!empty($context['saved_successful']))
-		echo '
-					<div class="infobox">', $txt['settings_saved'], '</div>';
-
-	template_show_list('news_lists');
-}
+?>

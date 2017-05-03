@@ -1,26 +1,58 @@
 <?php
 
 /**
- * This file contains functions that are specifically done by administrators.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Get a list of versions that are currently installed on the server.
- * @param array $checkFor An array of what to check versions for - can contain one or more of 'gd', 'imagemagick', 'db_server', 'phpa', 'memcache', 'xcache', 'apc', 'php' or 'server'
- * @return array An array of versions (keys are same as what was in $checkFor, values are the versions)
- */
+/*	This file contains functions that are specifically done by administrators.
+	The most important function in this file for mod makers happens to be the
+	updateSettingsFile() function, but it shouldn't be used often anyway.
+
+	void getServerVersions(array checkFor)
+		- get a list of versions that are currently installed on the server.
+
+	void getFileVersions(array versionOptions)
+		- get detailed version information about the physical SMF files on the
+		  server.
+		- the input parameter allows to set whether to include SSI.php and
+		  whether the results should be sorted.
+		- returns an array containing information on source files, templates
+		  and language files found in the default theme directory (grouped by
+		  language).
+
+	void updateSettingsFile(array config_vars)
+		- updates the Settings.php file with the changes in config_vars.
+		- expects config_vars to be an associative array, with the keys as the
+		  variable names in Settings.php, and the values the varaible values.
+		- does not escape or quote values.
+		- preserves case, formatting, and additional options in file.
+		- writes nothing if the resulting file would be less than 10 lines
+		  in length (sanity check for read lock.)
+
+	void updateAdminPreferences()
+		- saves the admins current preferences to the database.
+
+	void emailAdmins(string $template, array $replacements = array(), additional_recipients = array())
+		- loads all users who are admins or have the admin forum permission.
+		- uses the email template and replacements passed in the parameters.
+		- sends them an email.
+
+	bool updateLastDatabaseError()
+		- attempts to use the backup file first, to store the last database error
+		- and only update Settings.php if the first was successful.
+
+*/
+
 function getServerVersions($checkFor)
 {
 	global $txt, $db_connection, $_PHPA, $smcFunc, $memcached, $modSettings;
@@ -36,27 +68,6 @@ function getServerVersions($checkFor)
 		$versions['gd'] = array('title' => $txt['support_versions_gd'], 'version' => $temp['GD Version']);
 	}
 
-	// Why not have a look at ImageMagick? If it's installed, we should show version information for it too.
-	if (in_array('imagemagick', $checkFor) && (class_exists('Imagick') || function_exists('MagickGetVersionString')))
-	{
-		if (class_exists('Imagick'))
-		{
-			$temp = New Imagick;
-			$temp2 = $temp->getVersion();
-			$im_version = $temp2['versionString'];
-			$extension_version = 'Imagick ' . phpversion('Imagick');
-		}
-		else
-		{
-			$im_version = MagickGetVersionString();
-			$extension_version = 'MagickWand ' . phpversion('MagickWand');
-		}
-
-		// We already know it's ImageMagick and the website isn't needed...
-		$im_version = str_replace(array('ImageMagick ', ' http://www.imagemagick.org'), '', $im_version);
-		$versions['imagemagick'] = array('title' => $txt['support_versions_imagemagick'], 'version' => $im_version . ' (' . $extension_version . ')');
-	}
-
 	// Now lets check for the Database.
 	if (in_array('db_server', $checkFor))
 	{
@@ -65,9 +76,6 @@ function getServerVersions($checkFor)
 			trigger_error('getServerVersions(): you need to be connected to the database in order to get its server version', E_USER_NOTICE);
 		else
 		{
-			$versions['db_engine'] = array('title' => sprintf($txt['support_versions_db_engine'], $smcFunc['db_title']), 'version' => '');
-			$versions['db_engine']['version'] = $smcFunc['db_get_engine']();
-
 			$versions['db_server'] = array('title' => sprintf($txt['support_versions_db'], $smcFunc['db_title']), 'version' => '');
 			$versions['db_server']['version'] = $smcFunc['db_get_version']();
 		}
@@ -78,6 +86,10 @@ function getServerVersions($checkFor)
 		get_memcached_server();
 
 	// Check to see if we have any accelerators installed...
+	if (in_array('mmcache', $checkFor) && defined('MMCACHE_VERSION'))
+		$versions['mmcache'] = array('title' => 'Turck MMCache', 'version' => MMCACHE_VERSION);
+	if (in_array('eaccelerator', $checkFor) && defined('EACCELERATOR_VERSION'))
+		$versions['eaccelerator'] = array('title' => 'eAccelerator', 'version' => EACCELERATOR_VERSION);
 	if (in_array('phpa', $checkFor) && isset($_PHPA))
 		$versions['phpa'] = array('title' => 'ionCube PHP-Accelerator', 'version' => $_PHPA['VERSION']);
 	if (in_array('apc', $checkFor) && extension_loaded('apc'))
@@ -86,9 +98,8 @@ function getServerVersions($checkFor)
 		$versions['memcache'] = array('title' => 'Memcached', 'version' => empty($memcached) ? '???' : memcache_get_version($memcached));
 	if (in_array('xcache', $checkFor) && function_exists('xcache_set'))
 		$versions['xcache'] = array('title' => 'XCache', 'version' => XCACHE_VERSION);
-
 	if (in_array('php', $checkFor))
-		$versions['php'] = array('title' => 'PHP', 'version' => PHP_VERSION, 'more' => '?action=admin;area=serversettings;sa=phpinfo');
+		$versions['php'] = array('title' => 'PHP', 'version' => PHP_VERSION);
 
 	if (in_array('server', $checkFor))
 		$versions['server'] = array('title' => $txt['support_versions_server'], 'version' => $_SERVER['SERVER_SOFTWARE']);
@@ -96,21 +107,10 @@ function getServerVersions($checkFor)
 	return $versions;
 }
 
-/**
- * Search through source, theme and language files to determine their version.
- * Get detailed version information about the physical SMF files on the server.
- *
- * - the input parameter allows to set whether to include SSI.php and whether
- *   the results should be sorted.
- * - returns an array containing information on source files, templates and
- *   language files found in the default theme directory (grouped by language).
- *
- * @param array &$versionOptions An array of options. Can contain one or more of 'include_ssi', 'include_subscriptions', 'include_tasks' and 'sort_results'
- * @return array An array of file version info.
- */
+// Search through source, theme and language files to determine their version.
 function getFileVersions(&$versionOptions)
 {
-	global $boarddir, $sourcedir, $settings, $tasksdir;
+	global $boarddir, $sourcedir, $settings;
 
 	// Default place to find the languages would be the default theme dir.
 	$lang_dir = $settings['default_theme_dir'] . '/languages';
@@ -120,7 +120,6 @@ function getFileVersions(&$versionOptions)
 		'default_template_versions' => array(),
 		'template_versions' => array(),
 		'default_language_versions' => array(),
-		'tasks_versions' => array(),
 	);
 
 	// Find the version in SSI.php's file header.
@@ -173,30 +172,6 @@ function getFileVersions(&$versionOptions)
 		}
 	}
 	$sources_dir->close();
-
-	// Load all the files in the tasks directory.
-	if (!empty($versionOptions['include_tasks']))
-	{
-		$tasks_dir = dir($tasksdir);
-		while ($entry = $tasks_dir->read())
-		{
-			if (substr($entry, -4) === '.php' && !is_dir($tasksdir . '/' . $entry) && $entry !== 'index.php')
-			{
-				// Read the first 4k from the file.... enough for the header.
-				$fp = fopen($tasksdir . '/' . $entry, 'rb');
-				$header = fread($fp, 4096);
-				fclose($fp);
-
-				// Look for the version comment in the file header.
-				if (preg_match('~\*\s@version\s+(.+)[\s]{2}~i', $header, $match) == 1)
-					$version_info['tasks_versions'][$entry] = $match[1];
-				// It wasn't found, but the file was... show a '??'.
-				else
-					$version_info['tasks_versions'][$entry] = '??';
-			}
-		}
-		$tasks_dir->close();
-	}
 
 	// Load all the files in the default template directory - and the current theme if applicable.
 	$directories = array('default_template_versions' => $settings['default_theme_dir']);
@@ -257,7 +232,6 @@ function getFileVersions(&$versionOptions)
 		ksort($version_info['default_template_versions']);
 		ksort($version_info['template_versions']);
 		ksort($version_info['default_language_versions']);
-		ksort($version_info['tasks_versions']);
 
 		// For languages sort each language too.
 		foreach ($version_info['default_language_versions'] as $language => $dummy)
@@ -266,43 +240,16 @@ function getFileVersions(&$versionOptions)
 	return $version_info;
 }
 
-/**
- * Update the Settings.php file.
- *
- * The most important function in this file for mod makers happens to be the
- * updateSettingsFile() function, but it shouldn't be used often anyway.
- *
- * - updates the Settings.php file with the changes supplied in config_vars.
- * - expects config_vars to be an associative array, with the keys as the
- *   variable names in Settings.php, and the values the variable values.
- * - does not escape or quote values.
- * - preserves case, formatting, and additional options in file.
- * - writes nothing if the resulting file would be less than 10 lines
- *   in length (sanity check for read lock.)
- * - check for changes to db_last_error and passes those off to a separate handler
- * - attempts to create a backup file and will use it should the writing of the
- *   new settings file fail
- *
- * @param array $config_vars An array of one or more variables to update
- */
+// Update the Settings.php file.
 function updateSettingsFile($config_vars)
 {
-	global $boarddir, $cachedir, $context;
+	global $boarddir, $cachedir;
 
-	// Updating the db_last_error, then don't mess around with Settings.php
-	if (count($config_vars) === 1 && isset($config_vars['db_last_error']))
-	{
-		updateDbLastError($config_vars['db_last_error']);
-		return;
-	}
-
-	// When was Settings.php last changed?
+	// When is Settings.php last changed?
 	$last_settings_change = filemtime($boarddir . '/Settings.php');
 
-	// Load the settings file.
+	// Load the file.  Break it up based on \r or \n, and then clean out extra characters.
 	$settingsArray = trim(file_get_contents($boarddir . '/Settings.php'));
-
-	// Break it up based on \r or \n, and then clean out extra characters.
 	if (strpos($settingsArray, "\n") !== false)
 		$settingsArray = explode("\n", $settingsArray);
 	elseif (strpos($settingsArray, "\r") !== false)
@@ -310,15 +257,23 @@ function updateSettingsFile($config_vars)
 	else
 		return;
 
+	// Make sure we got a good file.
+	if (count($config_vars) == 1 && isset($config_vars['db_last_error']))
+	{
+		$temp = trim(implode("\n", $settingsArray));
+		if (substr($temp, 0, 5) != '<?php' || substr($temp, -2) != '?' . '>')
+			return;
+		if (strpos($temp, 'sourcedir') === false || strpos($temp, 'boarddir') === false || strpos($temp, 'cookiename') === false)
+			return;
+	}
+
 	// Presumably, the file has to have stuff in it for this function to be called :P.
 	if (count($settingsArray) < 10)
 		return;
 
-	// remove any /r's that made there way in here
 	foreach ($settingsArray as $k => $dummy)
 		$settingsArray[$k] = strtr($dummy, array("\r" => '')) . "\n";
 
-	// go line by line and see whats changing
 	for ($i = 0, $n = count($settingsArray); $i < $n; $i++)
 	{
 		// Don't trim or bother with it if it's not a variable.
@@ -330,13 +285,7 @@ function updateSettingsFile($config_vars)
 		// Look through the variables to set....
 		foreach ($config_vars as $var => $val)
 		{
-			// be sure someone is not updating db_last_error this with a group
-			if ($var === 'db_last_error')
-			{
-				updateDbLastError($val);
-				unset($config_vars[$var]);
-			}
-			elseif (strncasecmp($settingsArray[$i], '$' . $var, 1 + strlen($var)) == 0)
+			if (strncasecmp($settingsArray[$i], '$' . $var, 1 + strlen($var)) == 0)
 			{
 				$comment = strstr(substr($settingsArray[$i], strpos($settingsArray[$i], ';')), '#');
 				$settingsArray[$i] = '$' . $var . ' = ' . $val . ';' . ($comment == '' ? '' : "\t\t" . rtrim($comment)) . "\n";
@@ -345,53 +294,53 @@ function updateSettingsFile($config_vars)
 				unset($config_vars[$var]);
 			}
 		}
+
+		if (substr(trim($settingsArray[$i]), 0, 2) == '?' . '>')
+			$end = $i;
 	}
 
-	// Still more variables to go?  Then lets add them at the end.
+	// This should never happen, but apparently it is happening.
+	if (empty($end) || $end < 10)
+		$end = count($settingsArray) - 1;
+
+	// Still more?  Add them at the end.
 	if (!empty($config_vars))
-<<<<<<< HEAD
-	{		
-		// Add in any newly defined vars that were passed
-		foreach ($config_vars as $var => $val)
-			$settingsArray[$i++] = '$' . $var . ' = ' . $val . ';' . "\n";
-=======
 	{
 		if (trim($settingsArray[$end]) == '?' . '>')
 			$settingsArray[$end++] = '';
 		else
 			$end++;
 
-		// Add in any newly defined vars that were passed
 		foreach ($config_vars as $var => $val)
 			$settingsArray[$end++] = '$' . $var . ' = ' . $val . ';' . "\n";
-
 		$settingsArray[$end] = '?' . '>';
->>>>>>> 0f0f217c462afd53df641ca3381741af9b0585af
 	}
 	else
-		$settingsArray[$i] = trim($settingsArray[$i]);
+		$settingsArray[$end] = trim($settingsArray[$end]);
 
 	// Sanity error checking: the file needs to be at least 12 lines.
 	if (count($settingsArray) < 12)
 		return;
 
 	// Try to avoid a few pitfalls:
-	//  - like a possible race condition,
-	//  - or a failure to write at low diskspace
-	//
-	// Check before you act: if cache is enabled, we can do a simple write test
-	// to validate that we even write things on this filesystem.
+	// like a possible race condition,
+	// or a failure to write at low diskspace
+
+	// Check before you act: if cache is enabled, we can do a simple test
+	// Can we even write things on this filesystem?
 	if ((empty($cachedir) || !file_exists($cachedir)) && file_exists($boarddir . '/cache'))
 		$cachedir = $boarddir . '/cache';
-
 	$test_fp = @fopen($cachedir . '/settings_update.tmp', "w+");
 	if ($test_fp)
 	{
 		fclose($test_fp);
-		$written_bytes = file_put_contents($cachedir . '/settings_update.tmp', 'test', LOCK_EX);
+
+		$test_fp = @fopen($cachedir . '/settings_update.tmp', 'r+');
+		$written_bytes = fwrite($test_fp, "test");
+		fclose($test_fp);
 		@unlink($cachedir . '/settings_update.tmp');
 
-		if ($written_bytes !== 4)
+		if ($written_bytes !== strlen("test"))
 		{
 			// Oops. Low disk space, perhaps. Don't mess with Settings.php then.
 			// No means no. :P
@@ -403,50 +352,23 @@ function updateSettingsFile($config_vars)
 	clearstatcache();
 	if (filemtime($boarddir . '/Settings.php') === $last_settings_change)
 	{
-		// save the old before we do anything
-		$settings_backup_fail = !@is_writable($boarddir . '/Settings_bak.php') || !@copy($boarddir . '/Settings.php', $boarddir . '/Settings_bak.php');
-		$settings_backup_fail = !$settings_backup_fail ? (!file_exists($boarddir . '/Settings_bak.php') || filesize($boarddir . '/Settings_bak.php') === 0) : $settings_backup_fail;
+		// You asked for it...
+		// Blank out the file - done to fix a oddity with some servers.
+		$fp = @fopen($boarddir . '/Settings.php', 'w');
 
-		// write out the new
-		$write_settings = implode('', $settingsArray);
-		$written_bytes = file_put_contents($boarddir . '/Settings.php', $write_settings, LOCK_EX);
-
-		// survey says ...
-		if ($written_bytes !== strlen($write_settings) && !$settings_backup_fail)
+		// Is it even writable, though?
+		if ($fp)
 		{
-			// Well this is not good at all, lets see if we can save this
-			$context['settings_message'] = 'settings_error';
+			fclose($fp);
 
-			if (file_exists($boarddir . '/Settings_bak.php'))
-				@copy($boarddir . '/Settings_bak.php', $boarddir . '/Settings.php');
+			$fp = fopen($boarddir . '/Settings.php', 'r+');
+			foreach ($settingsArray as $line)
+				fwrite($fp, strtr($line, "\r", ''));
+			fclose($fp);
 		}
 	}
-
-	// Even though on normal installations the filemtime should prevent this being used by the installer incorrectly
-	// it seems that there are times it might not. So let's MAKE it dump the cache.
-	if (function_exists('opcache_invalidate'))
-		opcache_invalidate($boarddir . '/Settings.php', true);
 }
 
-/**
- * Saves the time of the last db error for the error log
- * - Done separately from updateSettingsFile to avoid race conditions
- *   which can occur during a db error
- * - If it fails Settings.php will assume 0
- *
- * @param int $time The timestamp of the last DB error
- */
-function updateDbLastError($time)
-{
-	global $boarddir;
-
-	// Write out the db_last_error file with the error timestamp
-	file_put_contents($boarddir . '/db_last_error.php', '<' . '?' . "php\n" . '$db_last_error = ' . $time . ';', LOCK_EX);
-	@touch($boarddir . '/' . 'Settings.php');
-}
-/**
- * Saves the admin's current preferences to the database.
- */
 function updateAdminPreferences()
 {
 	global $options, $context, $smcFunc, $settings, $user_info;
@@ -456,7 +378,7 @@ function updateAdminPreferences()
 		return false;
 
 	// This is what we'll be saving.
-	$options['admin_preferences'] = json_encode($context['admin_preferences']);
+	$options['admin_preferences'] = serialize($context['admin_preferences']);
 
 	// Just check we haven't ended up with something theme exclusive somehow.
 	$smcFunc['db_query']('', '
@@ -481,16 +403,7 @@ function updateAdminPreferences()
 	cache_put_data('theme_settings-' . $settings['theme_id'] . ':' . $user_info['id'], null, 0);
 }
 
-/**
- * Send all the administrators a lovely email.
- * - loads all users who are admins or have the admin forum permission.
- * - uses the email template and replacements passed in the parameters.
- * - sends them an email.
- *
- * @param string $template Which email template to use
- * @param array $replacements An array of items to replace the variables in the template
- * @param array $additional_recipients An array of arrays of info for additional recipients. Should have 'id', 'email' and 'name' for each.
- */
+// Send all the administrators a lovely email.
 function emailAdmins($template, $replacements = array(), $additional_recipients = array())
 {
 	global $smcFunc, $sourcedir, $language, $modSettings;
@@ -498,28 +411,39 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 	// We certainly want this.
 	require_once($sourcedir . '/Subs-Post.php');
 
-	// Load all members which are effectively admins.
-	require_once($sourcedir . '/Subs-Members.php');
-	$members = membersAllowedTo('admin_forum');
-
-	// Load their alert preferences
-	require_once($sourcedir . '/Subs-Notify.php');
-	$prefs = getNotifyPrefs($members, 'announcements', true);
+	// Load all groups which are effectively admins.
+	$request = $smcFunc['db_query']('', '
+		SELECT id_group
+		FROM {db_prefix}permissions
+		WHERE permission = {string:admin_forum}
+			AND add_deny = {int:add_deny}
+			AND id_group != {int:id_group}',
+		array(
+			'add_deny' => 1,
+			'id_group' => 0,
+			'admin_forum' => 'admin_forum',
+		)
+	);
+	$groups = array(1);
+	while ($row = $smcFunc['db_fetch_assoc']($request))
+		$groups[] = $row['id_group'];
+	$smcFunc['db_free_result']($request);
 
 	$request = $smcFunc['db_query']('', '
 		SELECT id_member, member_name, real_name, lngfile, email_address
 		FROM {db_prefix}members
-		WHERE id_member IN({array_int:members})',
+		WHERE (id_group IN ({array_int:group_list}) OR FIND_IN_SET({raw:group_array_implode}, additional_groups) != 0)
+			AND notify_types != {int:notify_types}
+		ORDER BY lngfile',
 		array(
-			'members' => $members,
+			'group_list' => $groups,
+			'notify_types' => 4,
+			'group_array_implode' => implode(', additional_groups) != 0 OR FIND_IN_SET(', $groups),
 		)
 	);
 	$emails_sent = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
-		if (empty($prefs[$row['id_member']]['announcements']))
-			continue;
-
 		// Stick their particulars in the replacement data.
 		$replacements['IDMEMBER'] = $row['id_member'];
 		$replacements['REALNAME'] = $row['member_name'];
@@ -529,7 +453,7 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 		$emaildata = loadEmailTemplate($template, $replacements, empty($row['lngfile']) || empty($modSettings['userLanguage']) ? $language : $row['lngfile']);
 
 		// Then send the actual email.
-		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, $template, $emaildata['is_html'], 1);
+		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
 
 		// Track who we emailed so we don't do it twice.
 		$emails_sent[] = $row['email_address'];
@@ -551,6 +475,76 @@ function emailAdmins($template, $replacements = array(), $additional_recipients 
 			$emaildata = loadEmailTemplate($template, $replacements, empty($recipient['lang']) || empty($modSettings['userLanguage']) ? $language : $recipient['lang']);
 
 			// Send off the email.
-			sendmail($recipient['email'], $emaildata['subject'], $emaildata['body'], null, $template, $emaildata['is_html'], 1);
+			sendmail($recipient['email'], $emaildata['subject'], $emaildata['body'], null, null, false, 1);
 		}
 }
+
+function updateLastDatabaseError()
+{
+	global $boarddir;
+
+	// Find out this way if we can even write things on this filesystem.
+	// In addition, store things first in the backup file
+
+	$last_settings_change = @filemtime($boarddir . '/Settings.php');
+
+	// Make sure the backup file is there...
+	$file = $boarddir . '/Settings_bak.php';
+	if ((!file_exists($file) || filesize($file) == 0) && !copy($boarddir . '/Settings.php', $file))
+			return false;
+
+	// ...and writable!
+	if (!is_writable($file))
+	{
+		chmod($file, 0755);
+		if (!is_writable($file))
+		{
+			chmod($file, 0775);
+			if (!is_writable($file))
+			{
+				chmod($file, 0777);
+				if (!is_writable($file))
+						return false;
+			}
+		}
+	}
+
+	// Put the new timestamp.
+	$data = file_get_contents($file);
+	$data = preg_replace('~\$db_last_error = \d+;~', '$db_last_error = ' . time() . ';', $data);
+
+	// Open the backup file for writing
+	if ($fp = @fopen($file, 'w'))
+	{
+		// Reset the file buffer.
+		set_file_buffer($fp, 0);
+
+		// Update the file.
+		$t = flock($fp, LOCK_EX);
+		$bytes = fwrite($fp, $data);
+		flock($fp, LOCK_UN);
+		fclose($fp);
+
+		// Was it a success?
+		// ...only relevant if we're still dealing with the same good ole' settings file.
+		clearstatcache();
+		if (($bytes == strlen($data)) && (filemtime($boarddir . '/Settings.php') === $last_settings_change))
+		{
+			// This is our new Settings file...
+			// At least this one is an atomic operation
+			@copy($file, $boarddir . '/Settings.php');
+			return true;
+		}
+		else
+		{
+			// Oops. Someone might have been faster
+			// or we have no more disk space left, troubles, troubles...
+			// Copy the file back and run for your life!
+			@copy($boarddir . '/Settings.php', $file);
+		}
+	}
+
+	return false;
+}
+
+?>

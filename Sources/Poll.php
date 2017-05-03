@@ -1,35 +1,77 @@
 <?php
 
 /**
- * This file contains the functions for voting, locking, removing and
- * editing polls. Note that that posting polls is done in Post.php.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Allow the user to vote.
- * It is called to register a vote in a poll.
- * Must be called with a topic and option specified.
- * Requires the poll_vote permission.
- * Upon successful completion of action will direct user back to topic.
- * Accessed via ?action=vote.
- *
- * @uses Post language file.
- */
+/*	This file contains the functions for voting, locking, removing and editing
+	polls. Note that that posting polls is done in Post.php.
+
+	void Vote()
+		- is called to register a vote in a poll.
+		- must be called with a topic and option specified.
+		- uses the Post language file.
+		- requires the poll_vote permission.
+		- upon successful completion of action will direct user back to topic.
+		- is accessed via ?action=vote.
+
+	void LockVoting()
+		- is called to lock or unlock voting on a poll.
+		- must be called with a topic specified in the URL.
+		- an admin always has over riding permission to lock a poll.
+		- if not an admin must have poll_lock_any permission.
+		- otherwise must be poll starter with poll_lock_own permission.
+		- upon successful completion of action will direct user back to topic.
+		- is accessed via ?action=lockvoting.
+
+	void EditPoll()
+		- is called to display screen for editing or adding a poll.
+		- must be called with a topic specified in the URL.
+		- if the user is adding a poll to a topic, must contain the variable
+		  'add' in the url.
+		- uses the Post language file.
+		- uses the Poll template (main sub template.).
+		- user must have poll_edit_any/poll_add_any permission for the relevant
+		  action.
+		- otherwise must be poll starter with poll_edit_own permission for
+		  editing, or be topic starter with poll_add_any permission for adding.
+		- is accessed via ?action=editpoll.
+
+	void EditPoll2()
+		- is called to update the settings for a poll, or add a new one.
+		- must be called with a topic specified in the URL.
+		- user must have poll_edit_any/poll_add_any permission for the relevant
+		  action.
+		- otherwise must be poll starter with poll_edit_own permission for
+		  editing, or be topic starter with poll_add_any permission for adding.
+		- in the case of an error will redirect back to EditPoll and display
+		  the relevant error message.
+		- upon successful completion of action will direct user back to topic.
+		- is accessed via ?action=editpoll2.
+
+	void RemovePoll()
+		- is called to remove a poll from a topic.
+		- must be called with a topic specified in the URL.
+		- user must have poll_remove_any permission.
+		- otherwise must be poll starter with poll_remove_own permission.
+		- upon successful completion of action will direct user back to topic.
+		- is accessed via ?action=removepoll.
+*/
+
+// Allow the user to vote.
 function Vote()
 {
-	global $topic, $user_info, $smcFunc, $sourcedir, $modSettings;
+	global $topic, $txt, $user_info, $smcFunc, $sourcedir, $modSettings;
 
 	// Make sure you can vote.
 	isAllowedTo('poll_vote');
@@ -38,7 +80,7 @@ function Vote()
 
 	// Check if they have already voted, or voting is locked.
 	$request = $smcFunc['db_query']('', '
-		SELECT COALESCE(lp.id_choice, -1) AS selected, p.voting_locked, p.id_poll, p.expire_time, p.max_votes, p.change_vote,
+		SELECT IFNULL(lp.id_choice, -1) AS selected, p.voting_locked, p.id_poll, p.expire_time, p.max_votes, p.change_vote,
 			p.guest_vote, p.reset_poll, p.num_guest_voters
 		FROM {db_prefix}topics AS t
 			INNER JOIN {db_prefix}polls AS p ON (p.id_poll = t.id_poll)
@@ -98,7 +140,7 @@ function Vote()
 	if (!$user_info['is_guest'] && $row['selected'] != -1 && empty($row['change_vote']))
 		fatal_lang_error('poll_error', false);
 	// Otherwise if they can change their vote yet they haven't sent any options... remove their vote and redirect.
-	elseif (!empty($row['change_vote']) && !$user_info['is_guest'] && empty($_POST['options']))
+	elseif (!empty($row['change_vote']) && !$user_info['is_guest'])
 	{
 		checkSession('request');
 		$pollOptions = array();
@@ -197,7 +239,7 @@ function Vote()
 		// Time is stored in case the poll is reset later, plus what they voted for.
 		$_COOKIE['guest_poll_vote'] = empty($_COOKIE['guest_poll_vote']) ? '' : $_COOKIE['guest_poll_vote'];
 		// ;id,timestamp,[vote,vote...]; etc
-		$_COOKIE['guest_poll_vote'] .= ';' . $row['id_poll'] . ',' . time() . ',' . implode(',', $pollOptions);
+		$_COOKIE['guest_poll_vote'] .= ';' . $row['id_poll'] . ',' . time() . ',' . (count($pollOptions) > 1 ? explode(',' . $pollOptions) : $pollOptions[0]);
 
 		// Increase num guest voters count by 1
 		$smcFunc['db_query']('', '
@@ -211,25 +253,14 @@ function Vote()
 
 		require_once($sourcedir . '/Subs-Auth.php');
 		$cookie_url = url_parts(!empty($modSettings['localCookies']), !empty($modSettings['globalCookies']));
-		smf_setcookie('guest_poll_vote', $_COOKIE['guest_poll_vote'], time() + 2500000, $cookie_url[1], $cookie_url[0], false, false);
+		setcookie('guest_poll_vote', $_COOKIE['guest_poll_vote'], time() + 2500000, $cookie_url[1], $cookie_url[0], 0);
 	}
-
-	// Maybe let a social networking mod log this, or something?
-	call_integration_hook('integrate_poll_vote', array(&$row['id_poll'], &$pollOptions));
 
 	// Return to the post...
 	redirectexit('topic=' . $topic . '.' . $_REQUEST['start']);
 }
 
-/**
- * Lock the voting for a poll.
- * Must be called with a topic specified in the URL.
- * An admin always has over riding permission to lock a poll.
- * If not an admin must have poll_lock_any permission, otherwise must
- * be poll starter with poll_lock_own permission.
- * Upon successful completion of action will direct user back to topic.
- * Accessed via ?action=lockvoting.
- */
+// Lock the voting for a poll.
 function LockVoting()
 {
 	global $topic, $user_info, $smcFunc;
@@ -280,24 +311,10 @@ function LockVoting()
 		)
 	);
 
-	logAction(($voting_locked ? '' : 'un') . 'lock_poll', array('topic' => $topic));
-
 	redirectexit('topic=' . $topic . '.' . $_REQUEST['start']);
 }
 
-/**
- * Display screen for editing or adding a poll.
- * Must be called with a topic specified in the URL.
- * If the user is adding a poll to a topic, must contain the variable
- * 'add' in the url.
- * User must have poll_edit_any/poll_add_any permission for the
- * relevant action, otherwise must be poll starter with poll_edit_own
- * permission for editing, or be topic starter with poll_add_any permission for adding.
- * Accessed via ?action=editpoll.
- *
- * @uses Post language file.
- * @uses Poll template, main sub-template.
- */
+// Ask what to change in a poll.
 function EditPoll()
 {
 	global $txt, $user_info, $context, $topic, $board, $smcFunc, $sourcedir, $scripturl;
@@ -308,6 +325,7 @@ function EditPoll()
 	loadLanguage('Post');
 	loadTemplate('Poll');
 
+	$context['can_moderate_poll'] = isset($_REQUEST['add']) ? 1 : allowedTo('moderate_board');
 	$context['start'] = (int) $_REQUEST['start'];
 	$context['is_edit'] = isset($_REQUEST['add']) ? 0 : 1;
 
@@ -345,7 +363,6 @@ function EditPoll()
 		isAllowedTo('poll_edit_' . ($user_info['id'] == $pollinfo['id_member_started'] || ($pollinfo['poll_starter'] != 0 && $user_info['id'] == $pollinfo['poll_starter']) ? 'own' : 'any'));
 	elseif (!$context['is_edit'] && !allowedTo('poll_add_any'))
 		isAllowedTo('poll_add_' . ($user_info['id'] == $pollinfo['id_member_started'] ? 'own' : 'any'));
-	$context['can_moderate_poll'] = isset($_REQUEST['add']) ? true : allowedTo('poll_edit_' . ($user_info['id'] == $pollinfo['id_member_started'] || ($pollinfo['poll_starter'] != 0 && $user_info['id'] == $pollinfo['poll_starter']) ? 'own' : 'any'));
 
 	// Do we enable guest voting?
 	require_once($sourcedir . '/Subs-Members.php');
@@ -456,8 +473,6 @@ function EditPoll()
 			'is_last' => true
 		);
 
-		$context['last_choice_id'] = $last_id;
-
 		if ($context['can_moderate_poll'])
 			$context['poll']['expiration'] = $_POST['poll_expire'];
 
@@ -495,7 +510,7 @@ function EditPoll()
 		);
 
 		// Poll expiration time?
-		$context['poll']['expiration'] = empty($pollinfo['expire_time']) || !$context['can_moderate_poll'] ? '' : ceil($pollinfo['expire_time'] <= time() ? -1 : ($pollinfo['expire_time'] - time()) / (3600 * 24));
+		$context['poll']['expiration'] = empty($pollinfo['expire_time']) || !allowedTo('moderate_board') ? '' : ceil($pollinfo['expire_time'] <= time() ? -1 : ($pollinfo['expire_time'] - time()) / (3600 * 24));
 
 		// Get all the choices - if this is an edit.
 		if ($context['is_edit'])
@@ -534,7 +549,6 @@ function EditPoll()
 				'label' => '',
 				'is_last' => true
 			);
-			$context['last_choice_id'] = $last_id;
 		}
 		// New poll?
 		else
@@ -559,7 +573,6 @@ function EditPoll()
 				array('id' => 3, 'number' => 4, 'votes' => -1, 'label' => '', 'is_last' => false),
 				array('id' => 4, 'number' => 5, 'votes' => -1, 'label' => '', 'is_last' => true)
 			);
-			$context['last_choice_id'] = 4;
 		}
 	}
 	$context['page_title'] = $context['is_edit'] ? $txt['poll_edit'] : $txt['add_poll'];
@@ -578,22 +591,11 @@ function EditPoll()
 	checkSubmitOnce('register');
 }
 
-/**
- * Update the settings for a poll, or add a new one.
- * Must be called with a topic specified in the URL.
- * The user must have poll_edit_any/poll_add_any permission
- * for the relevant action. Otherwise they must be poll starter
- * with poll_edit_own permission for editing, or be topic starter
- * with poll_add_any permission for adding.
- * In the case of an error, this function will redirect back to
- * EditPoll and display the relevant error message.
- * Upon successful completion of action will direct user back to topic.
- * Accessed via ?action=editpoll2.
- */
+// Change a poll...
 function EditPoll2()
 {
 	global $txt, $topic, $board, $context;
-	global $user_info, $smcFunc, $sourcedir;
+	global $modSettings, $user_info, $smcFunc, $sourcedir;
 
 	// Sneaking off, are we?
 	if (empty($_POST))
@@ -642,20 +644,14 @@ function EditPoll2()
 		isAllowedTo('poll_add_' . ($user_info['id'] == $bcinfo['id_member_started'] ? 'own' : 'any'));
 
 	$optionCount = 0;
-	$idCount = 0;
 	// Ensure the user is leaving a valid amount of options - there must be at least two.
 	foreach ($_POST['options'] as $k => $option)
 	{
 		if (trim($option) != '')
-		{
 			$optionCount++;
-			$idCount = max($idCount, $k);
-		}
 	}
 	if ($optionCount < 2)
 		$poll_errors[] = 'poll_few';
-	elseif ($optionCount > 256 || $idCount > 255)
-		$poll_errors[] = 'poll_many';
 
 	// Also - ensure they are not removing the question.
 	if (trim($_POST['question']) == '')
@@ -743,7 +739,7 @@ function EditPoll2()
 	else
 	{
 		// Create the poll.
-		$bcinfo['id_poll'] = $smcFunc['db_insert']('',
+		$smcFunc['db_insert']('',
 			'{db_prefix}polls',
 			array(
 				'question' => 'string-255', 'hide_results' => 'int', 'max_votes' => 'int', 'expire_time' => 'int', 'id_member' => 'int',
@@ -753,9 +749,11 @@ function EditPoll2()
 				$_POST['question'], $_POST['poll_hide'], $_POST['poll_max_votes'], $_POST['poll_expire'], $user_info['id'],
 				$user_info['username'], $_POST['poll_change_vote'], $_POST['poll_guest_vote'],
 			),
-			array('id_poll'),
-			1
+			array('id_poll')
 		);
+
+		// Set the poll ID.
+		$bcinfo['id_poll'] = $smcFunc['db_insert_id']('{db_prefix}polls', 'id_poll');
 
 		// Link the poll to the topic
 		$smcFunc['db_query']('', '
@@ -883,39 +881,11 @@ function EditPoll2()
 		);
 	}
 
-	call_integration_hook('integrate_poll_add_edit', array($bcinfo['id_poll'], $isEdit));
-
-	/* Log this edit, but don't go crazy.
-		Only specifically adding a poll	or resetting votes is logged.
-		Everything else is simply an edit.*/
-	if (isset($_REQUEST['add']))
-	{
-		// Added a poll
-		logAction('add_poll', array('topic' => $topic));
-	}
-	elseif (isset($_REQUEST['deletevotes']))
-	{
-		// Reset votes
-		logAction('reset_poll', array('topic' => $topic));
-	}
-	else
-	{
-		// Something else
-		logAction('editpoll', array('topic' => $topic));
-	}
-
 	// Off we go.
 	redirectexit('topic=' . $topic . '.' . $_REQUEST['start']);
 }
 
-/**
- * Remove a poll from a topic without removing the topic.
- * Must be called with a topic specified in the URL.
- * Requires poll_remove_any permission, unless it's the poll starter
- * with poll_remove_own permission.
- * Upon successful completion of action will direct user back to topic.
- * Accessed via ?action=removepoll.
- */
+// Remove a poll from a topic without removing the topic.
 function RemovePoll()
 {
 	global $topic, $user_info, $smcFunc;
@@ -996,12 +966,8 @@ function RemovePoll()
 		)
 	);
 
-	// A mod might have logged this (social network?), so let them remove, it too
-	call_integration_hook('integrate_poll_remove', array($pollID));
-
-	// Log this!
-	logAction('remove_poll', array('topic' => $topic));
-
 	// Take the moderator back to the topic.
 	redirectexit('topic=' . $topic . '.' . $_REQUEST['start']);
 }
+
+?>

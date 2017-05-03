@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1 Beta 3; Search
+// Version: 2.0; Search
 
 $txt['set_parameters'] = 'Set Search Parameters';
 $txt['choose_board'] = 'Choose a board to search in, or search all';
@@ -28,6 +28,7 @@ $txt['search_specific_topic'] = 'Searching only posts in the topic';
 
 $txt['mods_cat_search'] = 'Search';
 $txt['groups_search_posts'] = 'Membergroups with access to the search function';
+$txt['simpleSearch'] = 'Enable simple search';
 $txt['search_results_per_page'] = 'Number of search results per page';
 $txt['search_weight_frequency'] = 'Relative search weight for number of matching messages within a topic';
 $txt['search_weight_age'] = 'Relative search weight for age of last matching message';
@@ -37,7 +38,7 @@ $txt['search_weight_first_message'] = 'Relative search weight for a first messag
 $txt['search_weight_sticky'] = 'Relative search weight for a sticky topic';
 
 $txt['search_settings_desc'] = 'Here you can changes the basic settings of the search function.';
-$txt['search_settings_title'] = 'Search Settings';
+$txt['search_settings_title'] = 'Search function - settings';
 
 $txt['search_weights_desc'] = 'Here you can change the individual components of the relevance rating. ';
 $txt['search_weights_title'] = 'Search - weights';
@@ -59,7 +60,7 @@ $txt['search_method_fulltext_remove'] = 'remove fulltext index';
 $txt['search_method_index_partial'] = 'partially created';
 $txt['search_index_custom_resume'] = 'resume';
 // This string is used in a javascript confirmation popup; don't use entities.
-$txt['search_method_fulltext_warning'] = 'In order to be able to use fulltext search, you\\\'ll have to create a fulltext index first.';
+$txt['search_method_fulltext_warning'] = 'In order to be able to use fulltext search, you\\\'ll have to create a fulltext index first!';
 
 $txt['search_index'] = 'Search index';
 $txt['search_index_none'] = 'No index';
@@ -90,7 +91,7 @@ $txt['search_predefined_large'] = 'Large sized index';
 $txt['search_create_index_continue'] = 'Continue';
 $txt['search_create_index_not_ready'] = 'SMF is currently creating a search index of your messages. To avoid overloading your server, the process has been temporarily paused. It should automatically continue in a few seconds. If it doesn\'t, please click continue below.';
 $txt['search_create_index_progress'] = 'Progress';
-$txt['search_create_index_done'] = 'Custom search index successfully created.';
+$txt['search_create_index_done'] = 'Custom search index created!';
 $txt['search_create_index_done_link'] = 'Continue';
 $txt['search_double_index'] = 'You have currently created two indexes on the messages table. For best performance it is advisable to remove one of the two indexes.';
 
@@ -99,24 +100,20 @@ $txt['search_error_max_percentage'] = 'Invalid percentage of words to be skipped
 $txt['error_string_too_long'] = 'Search string must be less than %1$d characters long.';
 
 $txt['search_adjust_query'] = 'Adjust Search Parameters';
-$txt['search_warning_ignored_word'] = 'The following term has been ignored in your search because too short';
-$txt['search_warning_ignored_words'] = 'The following terms have been ignored in your search because too short';
 $txt['search_adjust_submit'] = 'Revise Search';
 $txt['search_did_you_mean'] = 'You may have meant to search for';
 
 $txt['search_example'] = '<em>e.g.</em> Orwell "Animal Farm" -movie';
 
 $txt['search_engines_description'] = 'From this area you can decide in what detail you wish to track search engines as they index your forum as well as review search engine logs.';
-$txt['spider_mode'] = 'Search Engine Tracking Level';
-$txt['spider_mode_note'] = 'Note that logging of every spider action only occurs if tracking is set to either "high" or "very high". Detail of every spiders action is only logged if tracking is set to "very high".';
+$txt['spider_mode'] = 'Search Engine Tracking Level<div class="smalltext">Note higher level tracking increases server resource requirement.</div>';
 $txt['spider_mode_off'] = 'Disabled';
-$txt['spider_mode_standard'] = 'Standard';
-$txt['spider_mode_high'] = 'Moderate';
-$txt['spider_mode_vhigh'] = 'Aggressive';
+$txt['spider_mode_standard'] = 'Standard - Logs minimal spider activity.';
+$txt['spider_mode_high'] = 'High - Provides more accurate statistics.';
+$txt['spider_mode_vhigh'] = 'Very High - As for &quot;High&quot; but logs data about each page visited.';
 $txt['spider_settings_desc'] = 'You can change settings for spider tracking from this page. Note, if you wish to enable automatic pruning of the hit logs you can set this up <a href="%1$s">here</a>';
 
-$txt['spider_group'] = 'Apply restrictive permissions from group';
-$txt['spider_group_note'] = 'To enable you to stop spiders indexing some pages.';
+$txt['spider_group'] = 'Apply restrictive permissions from group<div class="smalltext">To enable you to stop spiders indexing some pages.</div>';
 $txt['spider_group_none'] = 'Disabled';
 
 $txt['show_spider_online'] = 'Show spiders in the online list';
@@ -132,11 +129,11 @@ $txt['spider_agent'] = 'User Agent';
 $txt['spider_ip_info'] = 'IP Addresses';
 $txt['spiders_add'] = 'Add New Spider';
 $txt['spiders_edit'] = 'Edit Spider';
-$txt['spiders_remove_selected'] = 'Remove Selected';
-$txt['spider_remove_selected_confirm'] = 'Are you sure you want to remove these spiders?-n-All associated statistics will also be deleted!';
+$txt['spiders_remove_selected'] = 'Remove Selected Spiders';
+$txt['spider_remove_selected_confirm'] = 'Are you sure you wish to remove these spiders?\\n\\nAll associated statistics will also be deleted!';
 $txt['spiders_no_entries'] = 'There are currently no spiders configured.';
 
-$txt['add_spider_desc'] = 'From this page you can edit the parameters against which a spider is categorized. If a guest\'s user agent/IP address matches those entered below it will be detected as a search engine spider and tracked as per the forum preferences.';
+$txt['add_spider_desc'] = 'From this page you can edit the parameters against which a spider is categorised. If a guest\'s user agent/IP address matches those entered below it will be detected as a search engine spider and tracked as per the forum preferences.';
 $txt['spider_name_desc'] = 'Name by which the spider will be referred.';
 $txt['spider_agent_desc'] = 'User agent associated with this spider.';
 $txt['spider_ip_info_desc'] = 'Comma separated list of IP addresses associated with this spider.';
@@ -147,19 +144,16 @@ $txt['spider_viewing'] = 'Viewing';
 $txt['spider_logs_empty'] = 'There are currently no spider log entries.';
 $txt['spider_logs_info'] = 'Note that logging of every spider action only occurs if tracking is set to either &quot;high&quot; or &quot;very high&quot;. Detail of every spiders action is only logged if tracking is set to &quot;very high&quot;.';
 $txt['spider_disabled'] = 'Disabled';
-$txt['spider_log_empty_log'] = 'Clear Log';
-$txt['spider_log_empty_log_confirm'] = 'Are you sure you want to completely clear the log';
 
 $txt['spider_logs_delete'] = 'Delete Entries';
 $txt['spider_logs_delete_older'] = 'Delete all entries older than';
 $txt['spider_logs_delete_day'] = 'days.';
 $txt['spider_logs_delete_submit'] = 'Delete';
-
-$txt['spider_stats_delete_older'] = 'Delete all spider statistics from spiders not seen in %1$s days.';
-
 // Don't use entities in the below string.
 $txt['spider_logs_delete_confirm'] = 'Are you sure you wish to empty out all log entries?';
 
 $txt['spider_stats_select_month'] = 'Jump To Month';
 $txt['spider_stats_page_hits'] = 'Page Hits';
 $txt['spider_stats_no_entries'] = 'There are currently no spider statistics available.';
+
+?>

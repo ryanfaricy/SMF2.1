@@ -3,27 +3,25 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * Template for browsing the mail queue.
- */
 function template_browse()
 {
-	global $context, $txt;
+	global $context, $settings, $options, $scripturl, $txt;
 
 	echo '
 	<div id="manage_mail">
-		<div id="mailqueue_stats">
-			<div class="cat_bar">
-				<h3 class="catbg">', $txt['mailqueue_stats'], '</h3>
-			</div>
-			<div class="windowbg2 noup">
+		<div class="cat_bar">
+			<h3 class="catbg">', $txt['mailqueue_stats'], '</h3>
+		</div>
+		<div class="windowbg">
+			<span class="topslice"><span></span></span>
+			<div class="content">
 				<dl class="settings">
 					<dt><strong>', $txt['mailqueue_size'], '</strong></dt>
 					<dd>', $context['mail_queue_size'], '</dd>
@@ -31,10 +29,14 @@ function template_browse()
 					<dd>', $context['oldest_mail'], '</dd>
 				</dl>
 			</div>
+			<span class="botslice"><span></span></span>
 		</div>';
 
 	template_show_list('mail_queue');
 
 	echo '
-	</div>';
+	</div>
+	<br class="clear" />';
 }
+
+?>

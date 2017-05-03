@@ -1,5 +1,5 @@
 <?php
-// Version: 2.1 Beta 3; ManageMail
+// Version: 2.0; ManageMail
 
 $txt['mailqueue_desc'] = 'From this page you can configure your mail settings, as well as viewing and administrating the current mail queue if it is enabled.';
 
@@ -10,21 +10,22 @@ $txt['smtp_port'] = 'SMTP port';
 $txt['smtp_username'] = 'SMTP username';
 $txt['smtp_password'] = 'SMTP password';
 
+$txt['mail_queue'] = 'Enable Mail Queue';
 $txt['mail_limit'] = 'Maximum emails to send per minute';
+$txt['mail_limit_desc'] = '(Set to 0 to disable)';
 $txt['mail_quantity'] = 'Maximum amount of emails to send per page load';
 
-$txt['mailqueue_stats'] = 'Mail queue statistics';
+$txt['mailqueue_stats'] = 'Mail Queue Statistics';
 $txt['mailqueue_oldest'] = 'Oldest Mail';
 $txt['mailqueue_oldest_not_available'] = 'N/A';
-$txt['mailqueue_size'] = 'Queue length';
+$txt['mailqueue_size'] = 'Queue Length';
 
 $txt['mailqueue_age'] = 'Age';
 $txt['mailqueue_priority'] = 'Priority';
 $txt['mailqueue_recipient'] = 'Recipient';
 $txt['mailqueue_subject'] = 'Subject';
-$txt['mailqueue_clear_list'] = 'Send mail queue now';
+$txt['mailqueue_clear_list'] = 'Send Mail Queue Now';
 $txt['mailqueue_no_items'] = 'The mail queue is currently empty';
-$txt['personal_message'] = 'Personal Message';
 // Do not use numeric entities in below string.
 $txt['mailqueue_clear_list_warning'] = 'Are you sure you wish to send the whole mail queue now? This will override any limits you have set.';
 
@@ -43,8 +44,7 @@ $txt['mq_mpriority_3'] = 'Normal';
 $txt['mq_mpriority_2'] = 'High';
 $txt['mq_mpriority_1'] = 'Very High';
 
-$txt['birthday_email'] = 'Birthday message to use';
-$txt['birthday_body'] = 'Email body';
-$txt['birthday_subject'] = 'Email subject';
-
+$txt['birthday_email'] = 'Birthday Message to use';
+$txt['birthday_body'] = 'Email Body';
+$txt['birthday_subject'] = 'Email Subject';
 ?>

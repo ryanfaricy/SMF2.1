@@ -3,236 +3,279 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * This function displays all the stuff you get with a richedit box - BBC, smileys, etc.
- *
- * @param string $editor_id The editor ID
- * @param null|bool $smileyContainer If null, hides the smiley section regardless of settings
- * @param null|bool $bbcContainer If null, hides the bbcode buttons regardless of settings
- */
+// This function displays all the stuff you get with a richedit box - BBC, smileys etc.
 function template_control_richedit($editor_id, $smileyContainer = null, $bbcContainer = null)
 {
-	global $context, $settings, $modSettings;
+	global $context, $settings, $options, $txt, $modSettings, $scripturl;
 
 	$editor_context = &$context['controls']['richedit'][$editor_id];
 
 	echo '
-		<textarea class="editor" name="', $editor_id, '" id="', $editor_id, '" cols="600" onselect="storeCaret(this);" onclick="storeCaret(this);" onkeyup="storeCaret(this);" onchange="storeCaret(this);" tabindex="', $context['tabindex']++, '" style="width: ', $editor_context['width'], '; height: ', $editor_context['height'], ';', isset($context['post_error']['no_message']) || isset($context['post_error']['long_message']) ? 'border: 1px solid red;' : '', '"', !empty($context['editor']['required']) ? ' required' : '', '>', $editor_context['value'], '</textarea>
-		<div id="', $editor_id, '_resizer" class="richedit_resize"></div>
-		<input type="hidden" name="', $editor_id, '_mode" id="', $editor_id, '_mode" value="0">
-		<script>
-			$(document).ready(function() {
-				', !empty($context['bbcodes_handlers']) ? $context['bbcodes_handlers'] : '', '
-
-				$("#', $editor_id, '").sceditor({
-					',($editor_id != 'quickReply' ? 'autofocus : true,' : ''), '
-					style: "', $settings['default_theme_url'], '/css/jquery.sceditor.default.css",
-					emoticonsCompat: true,', !empty($editor_context['locale']) ? '
-					locale: \'' . $editor_context['locale'] . '\',' : '', !empty($context['right_to_left']) ? '
-					rtl: true,' : '', '
-					colors: "black,red,yellow,pink,green,orange,purple,blue,beige,brown,teal,navy,maroon,limegreen,white",
-					plugins: "bbcode",
-					parserOptions: {
-						quoteType: $.sceditor.BBCodeParser.QuoteType.auto
-					}';
+		<div>
+			<div style="width: 98.8%;">
+				<div>
+					<textarea class="editor" name="', $editor_id, '" id="', $editor_id, '" rows="', $editor_context['rows'], '" cols="600" onselect="storeCaret(this);" onclick="storeCaret(this);" onkeyup="storeCaret(this);" onchange="storeCaret(this);" tabindex="', $context['tabindex']++, '" style="height: ', $editor_context['height'], '; ', isset($context['post_error']['no_message']) || isset($context['post_error']['long_message']) ? 'border: 1px solid red;' : '', '">', $editor_context['value'], '</textarea>
+				</div>
+				<div id="', $editor_id, '_resizer" class="richedit_resize"></div>
+			</div>
+		</div>
+		<input type="hidden" name="', $editor_id, '_mode" id="', $editor_id, '_mode" value="0" />
+		<script type="text/javascript"><!-- // --><![CDATA[';
 
 		// Show the smileys.
 		if ((!empty($context['smileys']['postform']) || !empty($context['smileys']['popup'])) && !$editor_context['disable_smiley_box'] && $smileyContainer !== null)
 		{
-			echo ',
-					emoticons:
-					{';
-			$countLocations = count($context['smileys']);
+			echo '
+				var oSmileyBox_', $editor_id, ' = new smc_SmileyBox({
+					sUniqueId: ', JavaScriptEscape('smileyBox_' . $editor_id), ',
+					sContainerDiv: ', JavaScriptEscape($smileyContainer), ',
+					sClickHandler: ', JavaScriptEscape('oEditorHandle_' . $editor_id . '.insertSmiley'), ',
+					oSmileyLocations: {';
+
 			foreach ($context['smileys'] as $location => $smileyRows)
 			{
-				$countLocations--;
-				if ($location == 'postform')
-					echo '
-						dropdown:
-						{';
-				elseif ($location == 'popup')
-					echo '
-						popup:
-						{';
-
-				$numRows = count($smileyRows);
-				// This is needed because otherwise the editor will remove all the duplicate (empty) keys and leave only 1 additional line
-				$emptyPlaceholder = 0;
+				echo '
+						', $location, ': [';
 				foreach ($smileyRows as $smileyRow)
 				{
+					echo '
+							[';
 					foreach ($smileyRow['smileys'] as $smiley)
-					{
 						echo '
-								', JavaScriptEscape($smiley['code']), ': ', JavaScriptEscape($settings['smileys_url'] . '/' . $smiley['filename']), empty($smiley['isLast']) ? ',' : '';
-					}
-					if (empty($smileyRow['isLast']) && $numRows != 1)
-						echo ',
-						\'-', $emptyPlaceholder++, '\': \'\',';
+								{
+									sCode: ', JavaScriptEscape($smiley['code']), ',
+									sSrc: ', JavaScriptEscape($settings['smileys_url'] . '/' . $smiley['filename']), ',
+									sDescription: ', JavaScriptEscape($smiley['description']), '
+								}', empty($smiley['isLast']) ? ',' : '';
+
+				echo '
+							]', empty($smileyRow['isLast']) ? ',' : '';
 				}
 				echo '
-						}', $countLocations != 0 ? ',' : '';
+						]', $location === 'postform' ? ',' : '';
 			}
 			echo '
-					}';
+					},
+					sSmileyBoxTemplate: ', JavaScriptEscape('
+						%smileyRows% %moreSmileys%
+					'), ',
+					sSmileyRowTemplate: ', JavaScriptEscape('
+						<div>%smileyRow%</div>
+					'), ',
+					sSmileyTemplate: ', JavaScriptEscape('
+						<img src="%smileySource%" align="bottom" alt="%smileyDescription%" title="%smileyDescription%" id="%smileyId%" />
+					'), ',
+					sMoreSmileysTemplate: ', JavaScriptEscape('
+						<a href="#" id="%moreSmileysId%">[' . (!empty($context['smileys']['postform']) ? $txt['more_smileys'] : $txt['more_smileys_pick']) . ']</a>
+					'), ',
+					sMoreSmileysLinkId: ', JavaScriptEscape('moreSmileys_' . $editor_id), ',
+					sMoreSmileysPopupTemplate: ', JavaScriptEscape('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+						<html>
+							<head>
+								<title>' . $txt['more_smileys_title'] . '</title>
+								<link rel="stylesheet" type="text/css" href="' . $settings['theme_url'] . '/css/index' . $context['theme_variant'] . '.css?fin20" />
+							</head>
+							<body id="help_popup">
+								<div class="padding windowbg">
+									<div class="cat_bar">
+										<h3 class="catbg">
+											' . $txt['more_smileys_pick'] . '
+										</h3>
+									</div>
+									<div class="padding">
+										%smileyRows%
+									</div>
+									<div class="smalltext centertext">
+										<a href="#" id="%moreSmileysCloseLinkId%">' . $txt['more_smileys_close_window'] . '</a>
+									</div>
+								</div>
+							</body>
+						</html>'), '
+				});';
 		}
-		else
-			echo ',
-					emoticons:
-					{},
-					emoticonsEnabled:false';
 
 		if ($context['show_bbc'] && $bbcContainer !== null)
 		{
-			echo ',
-					toolbar: "';
-			$count_tags = count($context['bbc_tags']);
-			foreach ($context['bbc_toolbar'] as $i => $buttonRow)
+			echo '
+				var oBBCBox_', $editor_id, ' = new smc_BBCButtonBox({
+					sUniqueId: ', JavaScriptEscape('BBCBox_' . $editor_id), ',
+					sContainerDiv: ', JavaScriptEscape($bbcContainer), ',
+					sButtonClickHandler: ', JavaScriptEscape('oEditorHandle_' . $editor_id . '.handleButtonClick'), ',
+					sSelectChangeHandler: ', JavaScriptEscape('oEditorHandle_' . $editor_id . '.handleSelectChange'), ',
+					aButtonRows: [';
+
+			// Here loop through the array, printing the images/rows/separators!
+			foreach ($context['bbc_tags'] as $i => $buttonRow)
 			{
-				echo implode('|', $buttonRow);
-				$count_tags--;
-				if (!empty($count_tags))
-					echo '||';
+				echo '
+						[';
+				foreach ($buttonRow as $tag)
+				{
+					// Is there a "before" part for this bbc button? If not, it can't be a button!!
+					if (isset($tag['before']))
+						echo '
+							{
+								sType: \'button\',
+								bEnabled: ', empty($context['disabled_tags'][$tag['code']]) ? 'true' : 'false', ',
+								sImage: ', JavaScriptEscape($settings['images_url'] . '/bbc/' . $tag['image'] . '.gif'), ',
+								sCode: ', JavaScriptEscape($tag['code']), ',
+								sBefore: ', JavaScriptEscape($tag['before']), ',
+								sAfter: ', isset($tag['after']) ? JavaScriptEscape($tag['after']) : 'null', ',
+								sDescription: ', JavaScriptEscape($tag['description']), '
+							}', empty($tag['isLast']) ? ',' : '';
+
+					// Must be a divider then.
+					else
+						echo '
+							{
+								sType: \'divider\'
+							}', empty($tag['isLast']) ? ',' : '';
+				}
+
+				// Add the select boxes to the first row.
+				if ($i == 0)
+				{
+					// Show the font drop down...
+					if (!isset($context['disabled_tags']['font']))
+						echo ',
+							{
+								sType: \'select\',
+								sName: \'sel_face\',
+								oOptions: {
+									\'\': ', JavaScriptEscape($txt['font_face']), ',
+									\'courier\': \'Courier\',
+									\'arial\': \'Arial\',
+									\'arial black\': \'Arial Black\',
+									\'impact\': \'Impact\',
+									\'verdana\': \'Verdana\',
+									\'times new roman\': \'Times New Roman\',
+									\'georgia\': \'Georgia\',
+									\'andale mono\': \'Andale Mono\',
+									\'trebuchet ms\': \'Trebuchet MS\',
+									\'comic sans ms\': \'Comic Sans MS\'
+								}
+							}';
+
+					// Font sizes anyone?
+					if (!isset($context['disabled_tags']['size']))
+						echo ',
+							{
+								sType: \'select\',
+								sName: \'sel_size\',
+								oOptions: {
+									\'\': ', JavaScriptEscape($txt['font_size']), ',
+									\'1\': \'8pt\',
+									\'2\': \'10pt\',
+									\'3\': \'12pt\',
+									\'4\': \'14pt\',
+									\'5\': \'18pt\',
+									\'6\': \'24pt\',
+									\'7\': \'36pt\'
+								}
+							}';
+
+					// Print a drop down list for all the colors we allow!
+					if (!isset($context['disabled_tags']['color']))
+						echo ',
+							{
+								sType: \'select\',
+								sName: \'sel_color\',
+								oOptions: {
+									\'\': ', JavaScriptEscape($txt['change_color']), ',
+									\'black\': ', JavaScriptEscape($txt['black']), ',
+									\'red\': ', JavaScriptEscape($txt['red']), ',
+									\'yellow\': ', JavaScriptEscape($txt['yellow']), ',
+									\'pink\': ', JavaScriptEscape($txt['pink']), ',
+									\'green\': ', JavaScriptEscape($txt['green']), ',
+									\'orange\': ', JavaScriptEscape($txt['orange']), ',
+									\'purple\': ', JavaScriptEscape($txt['purple']), ',
+									\'blue\': ', JavaScriptEscape($txt['blue']), ',
+									\'beige\': ', JavaScriptEscape($txt['beige']), ',
+									\'brown\': ', JavaScriptEscape($txt['brown']), ',
+									\'teal\': ', JavaScriptEscape($txt['teal']), ',
+									\'navy\': ', JavaScriptEscape($txt['navy']), ',
+									\'maroon\': ', JavaScriptEscape($txt['maroon']), ',
+									\'limegreen\': ', JavaScriptEscape($txt['lime_green']), ',
+									\'white\': ', JavaScriptEscape($txt['white']), '
+								}
+							}';
+				}
+				echo '
+						]', $i == count($context['bbc_tags']) - 1 ? '' : ',';
 			}
-
-			echo '",';
+			echo '
+					],
+					sButtonTemplate: ', JavaScriptEscape('
+						<img id="%buttonId%" src="%buttonSrc%" align="bottom" width="23" height="22" alt="%buttonDescription%" title="%buttonDescription%" />
+					'), ',
+					sButtonBackgroundImage: ', JavaScriptEscape($settings['images_url'] . '/bbc/bbc_bg.gif'), ',
+					sButtonBackgroundImageHover: ', JavaScriptEscape($settings['images_url'] . '/bbc/bbc_hoverbg.gif'), ',
+					sActiveButtonBackgroundImage: ', JavaScriptEscape($settings['images_url'] . '/bbc/bbc_hoverbg.gif'), ',
+					sDividerTemplate: ', JavaScriptEscape('
+						<img src="' . $settings['images_url'] . '/bbc/divider.gif" alt="|" style="margin: 0 3px 0 3px;" />
+					'), ',
+					sSelectTemplate: ', JavaScriptEscape('
+						<select name="%selectName%" id="%selectId%" style="margin-bottom: 1ex; font-size: x-small;">
+							%selectOptions%
+						</select>
+					'), ',
+					sButtonRowTemplate: ', JavaScriptEscape('
+						<div>%buttonRow%</div>
+					'), '
+				});';
 		}
-		else
-			echo ',
-					toolbar: "",';
 
-		echo '
-				});
-				$("#', $editor_id, '").data("sceditor").createPermanentDropDown();', $editor_context['rich_active'] ? '' : '
-				$("#' . $editor_id . '").data("sceditor").toggleSourceMode();', isset($context['post_error']['no_message']) || isset($context['post_error']['long_message']) ? '
-				$(".sceditor-container").find("textarea").each(function() {$(this).css({border: "1px solid red"})});
-				$(".sceditor-container").find("iframe").each(function() {$(this).css({border: "1px solid red"})});' : '', '
-			});';
-
-		// Now for backward compatibility let's collect few infos in the good ol' style
+		// Now it's all drawn out we'll actually setup the box.
 		echo '
 				var oEditorHandle_', $editor_id, ' = new smc_Editor({
+					sSessionId: ', JavaScriptEscape($context['session_id']), ',
+					sSessionVar: ', JavaScriptEscape($context['session_var']), ',
+					sFormId: ', JavaScriptEscape($editor_context['form']), ',
 					sUniqueId: ', JavaScriptEscape($editor_id), ',
+					bRTL: ', $txt['lang_rtl'] ? 'true' : 'false', ',
+					bWysiwyg: ', $editor_context['rich_active'] ? 'true' : 'false', ',
+					sText: ', JavaScriptEscape($editor_context['rich_active'] ? $editor_context['rich_value'] : ''), ',
 					sEditWidth: ', JavaScriptEscape($editor_context['width']), ',
 					sEditHeight: ', JavaScriptEscape($editor_context['height']), ',
 					bRichEditOff: ', empty($modSettings['disable_wysiwyg']) ? 'false' : 'true', ',
-					oSmileyBox: null,
-					oBBCBox: null
+					oSmileyBox: ', !empty($context['smileys']['postform']) && !$editor_context['disable_smiley_box'] && $smileyContainer !== null ? 'oSmileyBox_' . $editor_id : 'null', ',
+					oBBCBox: ', $context['show_bbc'] && $bbcContainer !== null ? 'oBBCBox_' . $editor_id : 'null', '
 				});
-				smf_editorArray[smf_editorArray.length] = oEditorHandle_', $editor_id, ';
-			</script>';
+				smf_editorArray[smf_editorArray.length] = oEditorHandle_', $editor_id, ';';
+
+		echo '
+			// ]]></script>';
 }
 
-/**
- * This template shows the form buttons at the bottom of the editor
- *
- * @param string $editor_id The editor ID
- */
 function template_control_richedit_buttons($editor_id)
 {
-	global $context, $settings, $txt, $modSettings;
+	global $context, $settings, $options, $txt, $modSettings, $scripturl;
 
 	$editor_context = &$context['controls']['richedit'][$editor_id];
 
 	echo '
-		<span class="smalltext">
-			', $context['shortcuts_text'], '
-		</span>';
-
-	$tempTab = $context['tabindex'];
-	if (!empty($context['drafts_pm_save']))
-		$tempTab++;
-	elseif (!empty($context['drafts_save']))
-		$tempTab++;
-	elseif ($editor_context['preview_type'])
-		$tempTab++;
-	elseif ($context['show_spellchecking'])
-		$tempTab++;
-
-	$tempTab++;
-	$context['tabindex'] = $tempTab;
-
-	if (!empty($context['drafts_pm_save']))
-		echo '
-		<input type="submit" name="save_draft" value="', $txt['draft_save'], '" tabindex="', --$tempTab, '" onclick="submitThisOnce(this);" accesskey="d" class="button_submit">
-		<input type="hidden" id="id_pm_draft" name="id_pm_draft" value="', empty($context['id_pm_draft']) ? 0 : $context['id_pm_draft'], '">';
-
-	if (!empty($context['drafts_save']))
-		echo '
-		<input type="submit" name="save_draft" value="', $txt['draft_save'], '" tabindex="', --$tempTab, '" onclick="return confirm(' . JavaScriptEscape($txt['draft_save_note']) . ') && submitThisOnce(this);" accesskey="d" class="button_submit">
-		<input type="hidden" id="id_draft" name="id_draft" value="', empty($context['id_draft']) ? 0 : $context['id_draft'], '">';
-
-	if ($context['show_spellchecking'])
-		echo '
-		<input type="button" value="', $txt['spell_check'], '" tabindex="', --$tempTab, '" onclick="oEditorHandle_', $editor_id, '.spellCheckStart();" class="button_submit">';
+		<input type="submit" value="', isset($editor_context['labels']['post_button']) ? $editor_context['labels']['post_button'] : $txt['post'], '" tabindex="', $context['tabindex']++, '" onclick="return submitThisOnce(this);" accesskey="s" class="button_submit" />';
 
 	if ($editor_context['preview_type'])
 		echo '
-		<input type="submit" name="preview" value="', isset($editor_context['labels']['preview_button']) ? $editor_context['labels']['preview_button'] : $txt['preview'], '" tabindex="', --$tempTab, '" onclick="', $editor_context['preview_type'] == 2 ? 'return event.ctrlKey || previewPost();' : 'return submitThisOnce(this);', '" accesskey="p" class="button_submit">';
+		<input type="submit" name="preview" value="', isset($editor_context['labels']['preview_button']) ? $editor_context['labels']['preview_button'] : $txt['preview'], '" tabindex="', $context['tabindex']++, '" onclick="', $editor_context['preview_type'] == 2 ? 'return event.ctrlKey || previewPost();' : 'return submitThisOnce(this);', '" accesskey="p" class="button_submit" />';
 
-
-	echo '
-		<input type="submit" value="', isset($editor_context['labels']['post_button']) ? $editor_context['labels']['post_button'] : $txt['post'], '" name="post" tabindex="', --$tempTab, '" onclick="return submitThisOnce(this);" accesskey="s" class="button_submit">';
-
-	// Load in the PM autosaver if it's enabled
-	if (!empty($context['drafts_pm_save']) && !empty($context['drafts_autosave']))
+	if ($context['show_spellchecking'])
 		echo '
-		<span class="righttext padding" style="display: block">
-			<span id="throbber" style="display:none"><img src="' . $settings['images_url'] . '/loading_sm.gif" alt="" class="centericon">&nbsp;</span>
-			<span id="draft_lastautosave" ></span>
-		</span>
-		<script src="', $settings['default_theme_url'], '/scripts/drafts.js', $modSettings['browser_cache'], '"></script>
-		<script>
-			var oDraftAutoSave = new smf_DraftAutoSave({
-				sSelf: \'oDraftAutoSave\',
-				sLastNote: \'draft_lastautosave\',
-				sLastID: \'id_pm_draft\',
-				sSceditorID: \'', $editor_id, '\',
-				sType: \'post\',
-				bPM: true,
-				iBoard: 0,
-				iFreq: ', (empty($modSettings['drafts_autosave_frequency']) ? 60000 : $modSettings['drafts_autosave_frequency'] * 1000), '
-			});
-		</script>';
-
-	// Start an instance of the auto saver if its enabled
-	if (!empty($context['drafts_save']) && !empty($context['drafts_autosave']))
-		echo '
-		<span class="righttext padding" style="display: block">
-			<span id="throbber" style="display:none"><img src="' . $settings['images_url'] . '/loading_sm.gif" alt="" class="centericon">&nbsp;</span>
-			<span id="draft_lastautosave" ></span>
-		</span>
-		<script src="', $settings['default_theme_url'], '/scripts/drafts.js', $modSettings['browser_cache'], '"></script>
-		<script>
-			var oDraftAutoSave = new smf_DraftAutoSave({
-				sSelf: \'oDraftAutoSave\',
-				sLastNote: \'draft_lastautosave\',
-				sLastID: \'id_draft\',
-				sSceditorID: \'', $editor_id, '\',
-				sType: \'post\',
-				iBoard: ', (empty($context['current_board']) ? 0 : $context['current_board']), ',
-				iFreq: ', $context['drafts_autosave_frequency'], '
-			});
-		</script>';
+		<input type="button" value="', $txt['spell_check'], '" tabindex="', $context['tabindex']++, '" onclick="oEditorHandle_', $editor_id, '.spellCheckStart();" class="button_submit" />';
 }
 
-/**
- * This template displays a verification form
- *
- * @param int|string $verify_id The verification control ID
- * @param string $display_type What type to display. Can be 'single' to only show one verification option or 'all' to show all of them
- * @param bool $reset Whether to reset the internal tracking counter
- * @return bool False if there's nothing else to show, true if $display_type is 'single', nothing otherwise
- */
+// What's this, verification?!
 function template_control_verification($verify_id, $display_type = 'all', $reset = false)
 {
-	global $context, $txt;
+	global $context, $settings, $options, $txt, $modSettings;
 
 	$verify_context = &$context['controls']['verification'][$verify_id];
 
@@ -241,7 +284,7 @@ function template_control_verification($verify_id, $display_type = 'all', $reset
 		$verify_context['tracking'] = 0;
 
 	// How many items are there to display in total.
-	$total_items = count($verify_context['questions']) + ($verify_context['show_visual'] || $verify_context['can_recaptcha'] ? 1 : 0);
+	$total_items = count($verify_context['questions']) + ($verify_context['show_visual'] ? 1 : 0);
 
 	// If we've gone too far, stop.
 	if ($verify_context['tracking'] > $total_items)
@@ -258,45 +301,31 @@ function template_control_verification($verify_id, $display_type = 'all', $reset
 			echo '
 			<div id="verification_control_', $i, '" class="verification_control">';
 
-		// Display empty field, but only if we have one, and it's the first time.
-		if ($verify_context['empty_field'] && empty($i))
-			echo '
-				<div class="smalltext vv_special">
-					', $txt['visual_verification_hidden'], ':
-					<input type="text" name="', $_SESSION[$verify_id . '_vv']['empty_field'], '" autocomplete="off" size="30" value="">
-				</div>';
-
-		// Do the actual stuff
-		if ($i == 0 && ($verify_context['show_visual'] || $verify_context['can_recaptcha']))
+		// Do the actual stuff - image first?
+		if ($i == 0 && $verify_context['show_visual'])
 		{
-			if ($verify_context['show_visual'])
-			{
-				if ($context['use_graphic_library'])
-					echo '
-				<img src="', $verify_context['image_href'], '" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '">';
-				else
-					echo '
-				<img src="', $verify_context['image_href'], ';letter=1" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_1">
-				<img src="', $verify_context['image_href'], ';letter=2" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_2">
-				<img src="', $verify_context['image_href'], ';letter=3" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_3">
-				<img src="', $verify_context['image_href'], ';letter=4" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_4">
-				<img src="', $verify_context['image_href'], ';letter=5" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_5">
-				<img src="', $verify_context['image_href'], ';letter=6" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_6">';
+			if ($context['use_graphic_library'])
+				echo '
+				<img src="', $verify_context['image_href'], '" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '" />';
+			else
+				echo '
+				<img src="', $verify_context['image_href'], ';letter=1" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_1" />
+				<img src="', $verify_context['image_href'], ';letter=2" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_2" />
+				<img src="', $verify_context['image_href'], ';letter=3" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_3" />
+				<img src="', $verify_context['image_href'], ';letter=4" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_4" />
+				<img src="', $verify_context['image_href'], ';letter=5" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_5" />
+				<img src="', $verify_context['image_href'], ';letter=6" alt="', $txt['visual_verification_description'], '" id="verification_image_', $verify_id, '_6" />';
 
+			if (WIRELESS)
+				echo '<br />
+				<input type="text" name="', $verify_id, '_vv[code]" value="', !empty($verify_context['text_value']) ? $verify_context['text_value'] : '', '" size="30" tabindex="', $context['tabindex']++, '" class="input_text" />';
+			else
 				echo '
 				<div class="smalltext" style="margin: 4px 0 8px 0;">
-					<a href="', $verify_context['image_href'], ';sound" id="visual_verification_', $verify_id, '_sound" rel="nofollow">', $txt['visual_verification_sound'], '</a> / <a href="#visual_verification_', $verify_id, '_refresh" id="visual_verification_', $verify_id, '_refresh">', $txt['visual_verification_request_new'], '</a>', $display_type != 'quick_reply' ? '<br>' : '', '<br>
-					', $txt['visual_verification_description'], ':', $display_type != 'quick_reply' ? '<br>' : '', '
-					<input type="text" name="', $verify_id, '_vv[code]" value="', !empty($verify_context['text_value']) ? $verify_context['text_value'] : '', '" size="30" tabindex="', $context['tabindex']++, '" class="input_text" required>
+					<a href="', $verify_context['image_href'], ';sound" id="visual_verification_', $verify_id, '_sound" rel="nofollow">', $txt['visual_verification_sound'], '</a> / <a href="#" id="visual_verification_', $verify_id, '_refresh">', $txt['visual_verification_request_new'], '</a>', $display_type != 'quick_reply' ? '<br />' : '', '<br />
+					', $txt['visual_verification_description'], ':', $display_type != 'quick_reply' ? '<br />' : '', '
+					<input type="text" name="', $verify_id, '_vv[code]" value="', !empty($verify_context['text_value']) ? $verify_context['text_value'] : '', '" size="30" tabindex="', $context['tabindex']++, '" class="input_text" />
 				</div>';
-			}
-
-			if ($verify_context['can_recaptcha'])
-			{
-				echo '
-				<div class="g-recaptcha centertext" data-sitekey="' . $verify_context['recaptcha_site_key'] . '" data-theme="' . $verify_context['recaptcha_theme'] . '"></div><br>
-				<script type="text/javascript" src="https://www.google.com/recaptcha/api.js"></script>';
-			}
 		}
 		else
 		{
@@ -305,8 +334,8 @@ function template_control_verification($verify_id, $display_type = 'all', $reset
 
 			echo '
 				<div class="smalltext">
-					', $verify_context['questions'][$qIndex]['q'], ':<br>
-					<input type="text" name="', $verify_id, '_vv[q][', $verify_context['questions'][$qIndex]['id'], ']" size="30" value="', $verify_context['questions'][$qIndex]['a'], '" ', $verify_context['questions'][$qIndex]['is_error'] ? 'style="border: 1px red solid;"' : '', ' tabindex="', $context['tabindex']++, '" class="input_text" required>
+					', $verify_context['questions'][$qIndex]['q'], ':<br />
+					<input type="text" name="', $verify_id, '_vv[q][', $verify_context['questions'][$qIndex]['id'], ']" size="30" value="', $verify_context['questions'][$qIndex]['a'], '" ', $verify_context['questions'][$qIndex]['is_error'] ? 'style="border: 1px red solid;"' : '', ' tabindex="', $context['tabindex']++, '" class="input_text" />
 				</div>';
 		}
 
@@ -326,3 +355,5 @@ function template_control_verification($verify_id, $display_type = 'all', $reset
 	if ($display_type == 'single')
 		return true;
 }
+
+?>

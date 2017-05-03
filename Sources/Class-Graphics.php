@@ -1,32 +1,29 @@
 <?php
 
 /**
- * Classes used for reading gif files (in case PHP's GD doesn't provide the
- * proper gif-functions).
- *
- * Gif Util copyright 2003 by Yamasoft (S/C). All rights reserved.
- * Do not remove this portion of the header, or use these functions except
- * from the original author. To get it, please navigate to:
- * http://www.yamasoft.com/php-gif.zip
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
+
+/*	Gif Util copyright 2003 by Yamasoft (S/C). All rights reserved.
+	Do not remove this portion of the header, or use these functions except
+	from the original author. To get it, please navigate to:
+	http://www.yamasoft.com/php-gif.zip
+*/
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Class gif_lzw_compression
- *
- * An implementation of the LZW compression algorithm
- */
+/*	Classes used for reading gif files (in case PHP's GD doesn't provide the
+	proper gif-functions).
+*/
+
 class gif_lzw_compression
 {
 	public $MAX_LZW_BITS;
@@ -425,39 +422,40 @@ class gif_image
 			switch ($b)
 			{
 			// Extension...
-				case 0x21:
-					$len = 0;
-					if (!$this->skipExt($data, $len))
-						return false;
-
-					$datLen += $len;
-					break;
-
-				// Image...
-				case 0x2C:
-					// Load the header and color table.
-					$len = 0;
-					if (!$this->m_gih->load($data, $len))
-						return false;
-
-					$data = substr($data, $len);
-					$datLen += $len;
-
-					// Decompress the data, and ride on home ;).
-					$len = 0;
-					if (!($this->m_data = $this->m_lzw->decompress($data, $len)))
-						return false;
-					
-					$datLen += $len;
-
-					if ($this->m_gih->m_bInterlace)
-						$this->deInterlace();
-
-					return true;
-
-				case 0x3B: // EOF
-				default:
+			case 0x21:
+				$len = 0;
+				if (!$this->skipExt($data, $len))
 					return false;
+
+				$datLen += $len;
+				break;
+
+			// Image...
+			case 0x2C:
+				// Load the header and color table.
+				$len = 0;
+				if (!$this->m_gih->load($data, $len))
+					return false;
+
+				$data = substr($data, $len);
+				$datLen += $len;
+
+				// Decompress the data, and ride on home ;).
+				$len = 0;
+				if (!($this->m_data = $this->m_lzw->decompress($data, $len)))
+					return false;
+
+				$data = substr($data, $len);
+				$datLen += $len;
+
+				if ($this->m_gih->m_bInterlace)
+					$this->deInterlace();
+
+				return true;
+
+			case 0x3B: // EOF
+			default:
+				return false;
 			}
 		}
 		return false;
@@ -474,27 +472,27 @@ class gif_image
 		switch ($b)
 		{
 		// Graphic Control...
-			case 0xF9:
-				$b = ord($data[1]);
-				$this->m_disp   = ($b & 0x1C) >> 2;
-				$this->m_bUser  = ($b & 0x02) ? true : false;
-				$this->m_bTrans = ($b & 0x01) ? true : false;
-				list ($this->m_nDelay) = array_values(unpack('v', substr($data, 2, 2)));
-				$this->m_nTrans = ord($data[4]);
-				break;
+		case 0xF9:
+			$b = ord($data[1]);
+			$this->m_disp   = ($b & 0x1C) >> 2;
+			$this->m_bUser  = ($b & 0x02) ? true : false;
+			$this->m_bTrans = ($b & 0x01) ? true : false;
+			list ($this->m_nDelay) = array_values(unpack('v', substr($data, 2, 2)));
+			$this->m_nTrans = ord($data[4]);
+			break;
 
-			// Comment...
-			case 0xFE:
-				$this->m_lpComm = substr($data, 1, ord($data[0]));
-				break;
+		// Comment...
+		case 0xFE:
+			$this->m_lpComm = substr($data, 1, ord($data[0]));
+			break;
 
-			// Plain text...
-			case 0x01:
-				break;
+		// Plain text...
+		case 0x01:
+			break;
 
-			// Application...
-			case 0xFF:
-				break;
+		// Application...
+		case 0xFF:
+			break;
 		}
 
 		// Skip default as defs may change.
@@ -520,25 +518,25 @@ class gif_image
 		{
 			switch ($i)
 			{
-				case 0:
-					$s = 8;
-					$y = 0;
-					break;
+			case 0:
+				$s = 8;
+				$y = 0;
+				break;
 
-				case 1:
-					$s = 8;
-					$y = 4;
-					break;
+			case 1:
+				$s = 8;
+				$y = 4;
+				break;
 
-				case 2:
-					$s = 4;
-					$y = 2;
-					break;
+			case 2:
+				$s = 4;
+				$y = 2;
+				break;
 
-				case 3:
-					$s = 2;
-					$y = 1;
-					break;
+			case 3:
+				$s = 2;
+				$y = 1;
+				break;
 			}
 
 			for (; $y < $this->m_gih->m_nHeight; $y += $s)
@@ -695,8 +693,23 @@ class gif_file
 	}
 }
 
-// 64-bit only functions?
+// crc32 doesn't work as expected on 64-bit functions - make our own.
+// http://www.php.net/crc32#79567
 if (!function_exists('smf_crc32'))
 {
-	require_once $sourcedir . '/Subs-Compat.php';
+	function smf_crc32($number)
+	{
+		$crc = crc32($number);
+
+		if ($crc & 0x80000000)
+		{
+			$crc ^= 0xffffffff;
+			$crc += 1;
+			$crc = -$crc;
+		}
+
+		return $crc;
+	}
 }
+
+?>

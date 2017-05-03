@@ -95,7 +95,15 @@ smf_AdminIndex.prototype.checkUpdateAvailable = function ()
 	// Parse in the package download URL if it exists in the string.
 	document.getElementById('update-link').href = this.opt.sUpdateNotificationLink.replace('%package%', window.smfUpdatePackage);
 
-	oContainer.className = ('smfUpdateCritical' in window) ? 'errorbox' : 'noticebox';
+	// If we decide to override life into "red" mode, do it.
+	if ('smfUpdateCritical' in window)
+	{
+		document.getElementById('update_table').style.backgroundColor = '#aa2222';
+		document.getElementById('update_title').style.backgroundColor = '#dd2222';
+		document.getElementById('update_title').style.color = 'white';
+		document.getElementById('update_message').style.backgroundColor = '#eebbbb';
+		document.getElementById('update_message').style.color = 'black';
+	}
 }
 
 
@@ -126,10 +134,7 @@ smf_ViewVersions.prototype.swapOption = function (oSendingElement, sName)
 {
 	// If it is undefined, or currently off, turn it on - otherwise off.
 	this.oSwaps[sName] = !(sName in this.oSwaps) || !this.oSwaps[sName];
-	if (this.oSwaps[sName])
-		$("#" + sName).show(300);
-	else
-		$("#" + sName).hide(300);
+	document.getElementById(sName).style.display = this.oSwaps[sName] ? '' : 'none';
 
 	// Unselect the link and return false.
 	oSendingElement.blur();
@@ -191,30 +196,26 @@ smf_ViewVersions.prototype.determineVersions = function ()
 		Sources: '??',
 		Default: '??',
 		Languages: '??',
-		Templates: '??',
-		Tasks: '??'
+		Templates: '??'
 	};
 	var oHighCurrent = {
 		Sources: '??',
 		Default: '??',
 		Languages: '??',
-		Templates: '??',
-		Tasks: '??'
+		Templates: '??'
 	};
 	var oLowVersion = {
 		Sources: false,
 		Default: false,
 		Languages: false,
-		Templates: false,
-		Tasks: false
+		Templates: false
 	};
 
 	var sSections = [
 		'Sources',
 		'Default',
 		'Languages',
-		'Templates',
-		'Tasks'
+		'Templates'
 	];
 
 	for (var i = 0, n = sSections.length; i < n; i++)
@@ -265,7 +266,7 @@ smf_ViewVersions.prototype.determineVersions = function ()
 			if (this.compareVersions(sYourVersion, smfVersions[sFilename]))
 			{
 				oLowVersion[sCurVersionType] = sYourVersion;
-				document.getElementById('your' + sFilename).className = 'alert';
+				document.getElementById('your' + sFilename).style.color = 'red';
 			}
 		}
 		else if (this.compareVersions(sYourVersion, smfVersions[sFilename]))
@@ -306,12 +307,12 @@ smf_ViewVersions.prototype.determineVersions = function ()
 	setInnerHTML(document.getElementById('yourSources'), oLowVersion.Sources ? oLowVersion.Sources : oHighYour.Sources);
 	setInnerHTML(document.getElementById('currentSources'), oHighCurrent.Sources);
 	if (oLowVersion.Sources)
-		document.getElementById('yourSources').className = 'alert';
+		document.getElementById('yourSources').style.color = 'red';
 
 	setInnerHTML(document.getElementById('yourDefault'), oLowVersion.Default ? oLowVersion.Default : oHighYour.Default);
 	setInnerHTML(document.getElementById('currentDefault'), oHighCurrent.Default);
 	if (oLowVersion.Default)
-		document.getElementById('yourDefault').className = 'alert';
+		document.getElementById('yourDefault').style.color = 'red';
 
 	if (document.getElementById('Templates'))
 	{
@@ -319,297 +320,11 @@ smf_ViewVersions.prototype.determineVersions = function ()
 		setInnerHTML(document.getElementById('currentTemplates'), oHighCurrent.Templates);
 
 		if (oLowVersion.Templates)
-			document.getElementById('yourTemplates').className = 'alert';
+			document.getElementById('yourTemplates').style.color = 'red';
 	}
 
 	setInnerHTML(document.getElementById('yourLanguages'), oLowVersion.Languages ? oLowVersion.Languages : oHighYour.Languages);
 	setInnerHTML(document.getElementById('currentLanguages'), oHighCurrent.Languages);
 	if (oLowVersion.Languages)
-		document.getElementById('yourLanguages').className = 'alert';
-
-	setInnerHTML(document.getElementById('yourTasks'), oLowVersion.Tasks ? oLowVersion.Tasks : oHighYour.Tasks);
-	setInnerHTML(document.getElementById('currentTasks'), oHighCurrent.Tasks);
-	if (oLowVersion.Tasks)
-		document.getElementById('yourTasks').className = 'alert';
-}
-
-function addNewWord()
-{
-	setOuterHTML(document.getElementById('moreCensoredWords'), '<div style="margin-top: 1ex;"><input type="text" name="censor_vulgar[]" size="30" class="input_text"> => <input type="text" name="censor_proper[]" size="30" class="input_text"><' + '/div><div id="moreCensoredWords"><' + '/div>');
-}
-
-function toggleBBCDisabled(section, disable)
-{
-	elems = document.getElementById(section).getElementsByTagName('*');
-	for (var i = 0; i < elems.length; i++)
-	{
-		if (typeof(elems[i].name) == "undefined" || (elems[i].name.substr((section.length + 1), (elems[i].name.length - 2 - (section.length + 1))) != "enabledTags") || (elems[i].name.indexOf(section) != 0))
-			continue;
-
-		elems[i].disabled = disable;
-	}
-	document.getElementById("bbc_" + section + "_select_all").disabled = disable;
-}
-
-function updateInputBoxes()
-{
-	curType = document.getElementById("field_type").value;
-	privStatus = document.getElementById("private").value;
-	document.getElementById("max_length_dt").style.display = curType == "text" || curType == "textarea" ? "" : "none";
-	document.getElementById("max_length_dd").style.display = curType == "text" || curType == "textarea" ? "" : "none";
-	document.getElementById("dimension_dt").style.display = curType == "textarea" ? "" : "none";
-	document.getElementById("dimension_dd").style.display = curType == "textarea" ? "" : "none";
-	document.getElementById("bbc_dt").style.display = curType == "text" || curType == "textarea" ? "" : "none";
-	document.getElementById("bbc_dd").style.display = curType == "text" || curType == "textarea" ? "" : "none";
-	document.getElementById("options_dt").style.display = curType == "select" || curType == "radio" ? "" : "none";
-	document.getElementById("options_dd").style.display = curType == "select" || curType == "radio" ? "" : "none";
-	document.getElementById("default_dt").style.display = curType == "check" ? "" : "none";
-	document.getElementById("default_dd").style.display = curType == "check" ? "" : "none";
-	document.getElementById("mask_dt").style.display = curType == "text" ? "" : "none";
-	document.getElementById("mask").style.display = curType == "text" ? "" : "none";
-	document.getElementById("can_search_dt").style.display = curType == "text" || curType == "textarea" || curType == "select" ? "" : "none";
-	document.getElementById("can_search_dd").style.display = curType == "text" || curType == "textarea" || curType == "select" ? "" : "none";
-	document.getElementById("regex_div").style.display = curType == "text" && document.getElementById("mask").value == "regex" ? "" : "none";
-	document.getElementById("display").disabled = false;
-	// Cannot show this on the topic
-	if (curType == "textarea" || privStatus >= 2)
-	{
-		document.getElementById("display").checked = false;
-		document.getElementById("display").disabled = true;
-	}
-}
-
-function addOption()
-{
-	setOuterHTML(document.getElementById("addopt"), '<br><input type="radio" name="default_select" value="' + startOptID + '" id="' + startOptID + '" class="input_radio"><input type="text" name="select_option[' + startOptID + ']" value="" class="input_text"><span id="addopt"></span>');
-	startOptID++;
-}
-
-
-//Create a named element dynamically - thanks to: http://www.thunderguy.com/semicolon/2005/05/23/setting-the-name-attribute-in-internet-explorer/
-function createNamedElement(type, name, customFields)
-{
-	var element = null;
-
-	if (!customFields)
-		customFields = "";
-
-	// Try the IE way; this fails on standards-compliant browsers
-	try
-	{
-		element = document.createElement("<" + type + ' name="' + name + '" ' + customFields + ">");
-	}
-	catch (e)
-	{
-	}
-	if (!element || element.nodeName != type.toUpperCase())
-	{
-		// Non-IE browser; use canonical method to create named element
-		element = document.createElement(type);
-		element.name = name;
-	}
-
-	return element;
-}
-
-function smfSetLatestThemes()
-{
-	if (typeof(window.smfLatestThemes) != "undefined")
-		setInnerHTML(document.getElementById("themeLatest"), window.smfLatestThemes);
-
-	if (tempOldOnload)
-		tempOldOnload();
-}
-
-function changeVariant(sVariant)
-{
-	document.getElementById('variant_preview').src = oThumbnails[sVariant];
-}
-
-// The idea here is simple: don't refresh the preview on every keypress, but do refresh after they type.
-function setPreviewTimeout()
-{
-	if (previewTimeout)
-	{
-		window.clearTimeout(previewTimeout);
-		previewTimeout = null;
-	}
-
-	previewTimeout = window.setTimeout("refreshPreview(true); previewTimeout = null;", 500);
-}
-
-function toggleDuration(toChange)
-{
-	if (toChange == 'fixed')
-	{
-		document.getElementById("fixed_area").style.display = "inline";
-		document.getElementById("flexible_area").style.display = "none";
-	}
-	else
-	{
-		document.getElementById("fixed_area").style.display = "none";
-		document.getElementById("flexible_area").style.display = "inline";
-	}
-}
-
-function calculateNewValues()
-{
-	var total = 0;
-	for (var i = 1; i <= 6; i++)
-	{
-		total += parseInt(document.getElementById('weight' + i + '_val').value);
-	}
-	setInnerHTML(document.getElementById('weighttotal'), total);
-	for (var i = 1; i <= 6; i++)
-	{
-		setInnerHTML(document.getElementById('weight' + i), (Math.round(1000 * parseInt(document.getElementById('weight' + i + '_val').value) / total) / 10) + '%');
-	}
-}
-
-function switchType()
-{
-	document.getElementById("ul_settings").style.display = document.getElementById("method-existing").checked ? "none" : "";
-	document.getElementById("ex_settings").style.display = document.getElementById("method-upload").checked ? "none" : "";
-}
-
-function swapUploads()
-{
-	document.getElementById("uploadMore").style.display = document.getElementById("uploadSmiley").disabled ? "none" : "";
-	document.getElementById("uploadSmiley").disabled = !document.getElementById("uploadSmiley").disabled;
-}
-
-function selectMethod(element)
-{
-	document.getElementById("method-existing").checked = element != "upload";
-	document.getElementById("method-upload").checked = element == "upload";
-}
-
-function updatePreview()
-{
-	var currentImage = document.getElementById("preview");
-	currentImage.src = smf_smileys_url + "/" + document.forms.smileyForm.set.value + "/" + document.forms.smileyForm.smiley_filename.value;
-}
-
-function swap_database_changes()
-{
-	db_vis = !db_vis;
-	database_changes_area.style.display = db_vis ? "" : "none";
-	return false;
-}
-
-function testFTP()
-{
-	ajax_indicator(true);
-
-	// What we need to post.
-	var oPostData = {
-		0: "ftp_server",
-		1: "ftp_port",
-		2: "ftp_username",
-		3: "ftp_password",
-		4: "ftp_path"
-	}
-
-	var sPostData = "";
-	for (i = 0; i < 5; i++)
-		sPostData = sPostData + (sPostData.length == 0 ? "" : "&") + oPostData[i] + "=" + escape(document.getElementById(oPostData[i]).value);
-
-	// Post the data out.
-	sendXMLDocument(smf_prepareScriptUrl(smf_scripturl) + 'action=admin;area=packages;sa=ftptest;xml;' + smf_session_var + '=' + smf_session_id, sPostData, testFTPResults);
-}
-
-function expandFolder(folderIdent, folderReal)
-{
-	// See if it already exists.
-	var possibleTags = document.getElementsByTagName("tr");
-	var foundOne = false;
-
-	for (var i = 0; i < possibleTags.length; i++)
-	{
-		if (possibleTags[i].id.indexOf("content_" + folderIdent + ":-:") == 0)
-		{
-			possibleTags[i].style.display = possibleTags[i].style.display == "none" ? "" : "none";
-			foundOne = true;
-		}
-	}
-
-	// Got something then we're done.
-	if (foundOne)
-	{
-		return false;
-	}
-	// Otherwise we need to get the wicked thing.
-	else if (window.XMLHttpRequest)
-	{
-		ajax_indicator(true);
-		getXMLDocument(smf_prepareScriptUrl(smf_scripturl) + 'action=admin;area=packages;onlyfind=' + escape(folderReal) + ';sa=perms;xml;' + smf_session_var + '=' + smf_session_id, onNewFolderReceived);
-	}
-	// Otherwise reload.
-	else
-		return true;
-
-	return false;
-}
-
-function dynamicExpandFolder()
-{
-	expandFolder(this.ident, this.path);
-
-	return false;
-}
-
-function repeatString(sString, iTime)
-{
-	if (iTime < 1)
-		return '';
-	else
-		return sString + repeatString(sString, iTime - 1);
-}
-
-function select_in_category(cat_id, elem, brd_list)
-{
-	for (var brd in brd_list)
-		document.getElementById(elem.value + '_brd' + brd_list[brd]).checked = true;
-
-	elem.selectedIndex = 0;
-}
-
-/*
-* Attachments Settings
-*/
-function toggleSubDir ()
-{
-	var auto_attach = document.getElementById('automanage_attachments');
-	var use_sub_dir = document.getElementById('use_subdirectories_for_attachments');
-	var dir_elem = document.getElementById('basedirectory_for_attachments');
-
-	use_sub_dir.disabled = !Boolean(auto_attach.selectedIndex);
-	if (use_sub_dir.disabled)
-	{
-		use_sub_dir.style.display = "none";
-		document.getElementById('setting_use_subdirectories_for_attachments').parentNode.style.display = "none";
-		dir_elem.style.display = "none";
-		document.getElementById('setting_basedirectory_for_attachments').parentNode.style.display = "none";
-	}
-	else
-	{
-		use_sub_dir.style.display = "";
-		document.getElementById('setting_use_subdirectories_for_attachments').parentNode.style.display = "";
-		dir_elem.style.display = "";
-		document.getElementById('setting_basedirectory_for_attachments').parentNode.style.display = "";
-	}
-		toggleBaseDir();
-}
-function toggleBaseDir ()
-{
-	var auto_attach = document.getElementById('automanage_attachments');
-	var sub_dir = document.getElementById('use_subdirectories_for_attachments');
-	var dir_elem = document.getElementById('basedirectory_for_attachments');
-
-	if (auto_attach.selectedIndex == 0)
-	{
-		dir_elem.disabled = 1;
-	}
-	else
-		dir_elem.disabled = !sub_dir.checked;
+		document.getElementById('yourLanguages').style.color = 'red';
 }

@@ -1,5 +1,7 @@
 <?php
-// Version: 2.1 Beta 3; Modlog
+// Version: 2.0; Modlog
+
+global $scripturl;
 
 $txt['modlog_date'] = 'Date';
 $txt['modlog_member'] = 'Member';
@@ -9,9 +11,7 @@ $txt['modlog_ip'] = 'IP';
 $txt['modlog_search_result'] = 'Search Results';
 $txt['modlog_total_entries'] = 'Total Entries';
 $txt['modlog_ac_approve_topic'] = 'Approved topic &quot;{topic}&quot; by &quot;{member}&quot;';
-$txt['modlog_ac_unapprove_topic'] = 'Unapproved topic &quot;{topic}&quot; by &quot;{member}&quot;';
 $txt['modlog_ac_approve'] = 'Approved message &quot;{subject}&quot; in &quot;{topic}&quot; by &quot;{member}&quot;';
-$txt['modlog_ac_unapprove'] = 'Unapproved message &quot;{subject}&quot; in &quot;{topic}&quot; by &quot;{member}&quot;';
 $txt['modlog_ac_lock'] = 'Locked &quot;{topic}&quot;';
 $txt['modlog_ac_warning'] = 'Warned {member} for &quot;{message}&quot;';
 $txt['modlog_ac_unlock'] = 'Unlocked &quot;{topic}&quot;';
@@ -27,16 +27,12 @@ $txt['modlog_ac_move'] = 'Moved &quot;{topic}&quot; from &quot;{board_from}&quot
 $txt['modlog_ac_profile'] = 'Edit the profile of &quot;{member}&quot;';
 $txt['modlog_ac_pruned'] = 'Pruned some posts older than {days} days';
 $txt['modlog_ac_news'] = 'Edited the news';
-$txt['modlog_ac_clearlog_moderate'] = 'Cleared the moderation log';
-$txt['modlog_ac_clearlog_admin'] = 'Cleared the administration log';
 $txt['modlog_enter_comment'] = 'Enter Moderation Comment';
 $txt['modlog_moderation_log'] = 'Moderation Log';
-$txt['modlog_moderation_log_desc'] = 'Below is a list of all the moderation actions that have been carried out by moderators of the forum.';
+$txt['modlog_moderation_log_desc'] = 'Below is a list of all the moderation actions that have been carried out by moderators of the forum.<br /><strong>Please note:</strong> Entries cannot be removed from this log until they are at least twenty-four hours old.';
 $txt['modlog_no_entries_found'] = 'There are currently no moderation log entries.';
-$txt['modlog_remove'] = 'Delete Selected';
-$txt['modlog_removeall'] = 'Clear Log';
-$txt['modlog_remove_selected_confirm'] = 'Are you sure you want to delete the selected log entries?';
-$txt['modlog_remove_all_confirm'] = 'Are you sure you want to completely clear the log?';
+$txt['modlog_remove'] = 'Remove';
+$txt['modlog_removeall'] = 'Remove All';
 $txt['modlog_go'] = 'Go';
 $txt['modlog_add'] = 'Add';
 $txt['modlog_search'] = 'Quick Search';
@@ -48,14 +44,13 @@ $txt['modlog_ac_modify_warn_template'] = 'Edited the warning template: &quot;{te
 $txt['modlog_ac_delete_warn_template'] = 'Deleted the warning template: &quot;{template}&quot;';
 
 $txt['modlog_ac_ban'] = 'Added ban triggers:';
-$txt['modlog_ac_ban_remove'] = 'Removed ban triggers:';
 $txt['modlog_ac_ban_trigger_member'] = ' <em>Member:</em> {member}';
 $txt['modlog_ac_ban_trigger_email'] = ' <em>Email:</em> {email}';
 $txt['modlog_ac_ban_trigger_ip_range'] = ' <em>IP:</em> {ip_range}';
 $txt['modlog_ac_ban_trigger_hostname'] = ' <em>Hostname:</em> {hostname}';
 
 $txt['modlog_admin_log'] = 'Administration Log';
-$txt['modlog_admin_log_desc'] = 'Below is a list of administration actions which have been logged on your forum.';
+$txt['modlog_admin_log_desc'] = 'Below is a list of administration actions which have been logged on your forum.<br /><strong>Please note:</strong> Entries cannot be removed from this log until they are at least twenty-four hours old.';
 $txt['modlog_admin_log_no_entries_found'] = 'There are currently no administration log entries.';
 
 // Admin type strings.
@@ -88,29 +83,5 @@ $txt['modlog_ac_restore_topic'] = 'Restored topic &quot;{topic}&quot; from &quot
 $txt['modlog_ac_restore_posts'] = 'Restored posts from &quot;{subject}&quot; to the topic &quot;{topic}&quot; in the &quot;{board}&quot; board.';
 
 $txt['modlog_parameter_guest'] = '<em>Guest</em>';
-
-$txt['modlog_ac_approve_attach'] = 'Approved &quot;{filename}&quot; in &quot;{message}&quot;';
-$txt['modlog_ac_remove_attach'] = 'Removed unapproved &quot;{filename}&quot; in &quot;{message}&quot;';
-
-// Handling reports on posts
-$txt['modlog_report'] = 'report';
-$txt['modlog_ac_close_report'] = 'Closed {report} on &quot;{message}&quot;';
-$txt['modlog_ac_ignore_report'] = 'Disregarded {report} on &quot;{message}&quot;';
-$txt['modlog_ac_open_report'] = 'Reopened {report} on &quot;{message}&quot;';
-$txt['modlog_ac_unignore_report'] = 'Undone disregard of {report} on &quot;{message}&quot;';
-
-// Handling reports on users
-$txt['modlog_ac_close_user_report'] = 'Closed {report} on profile of {member}';
-$txt['modlog_ac_ignore_user_report'] = 'Disregarded {report} on profile of {member}';
-$txt['modlog_ac_open_user_report'] = 'Reopened {report} on profile of {member}';
-$txt['modlog_ac_unignore_user_report'] = 'Undone disregard of {report} on profile of {member}';
-
-// Poll stuff
-$txt['modlog_ac_add_poll'] = 'Added a poll to &quot;{topic}&quot;';
-$txt['modlog_ac_edit_poll'] = 'Edited the poll in &quot;{topic}&quot;';
-$txt['modlog_ac_lock_poll'] = 'Locked voting in the poll in &quot;{topic}&quot;';
-$txt['modlog_ac_remove_poll'] = 'Removed the poll from &quot;{topic}&quot;';
-$txt['modlog_ac_reset_poll'] = 'Reset votes in the poll in &quot;{topic}&quot;';
-$txt['modlog_ac_unlock_poll'] = 'Unlocked voting in the poll in &quot;{topic}&quot;';
 
 ?>

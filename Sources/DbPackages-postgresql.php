@@ -1,24 +1,48 @@
 <?php
 
 /**
- * This file contains database functionality specifically designed for packages (mods) to utilize.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.10
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Add the file functions to the $smcFunc array.
- */
+/*	This file contains database functionality specifically designed for packages to utilize.
+
+	bool smf_db_create_table(string table_name, array columns, array indexes = array(),
+		array parameters = array(), string if_exists = 'ignore')
+		- Can be used to create a table without worrying about schema compatabilities.
+		- If the table exists will, by default, do nothing.
+		- Builds table with columns as passed to it - at least one column must be sent.
+		  The columns array should have one sub-array for each column - these sub arrays contain:
+			+ 'name' = Column name
+			+ 'type' = Type of column - values from (smallint,mediumint,int,text,varchar,char,tinytext,mediumtext,largetext)
+			+ 'size' => Size of column (If applicable) - for example 255 for a large varchar, 10 for an int etc. If not
+						set SMF will pick a size.
+			+ 'default' = Default value - do not set if no default required.
+			+ 'null' => Can it be null (true or false) - if not set default will be false.
+			+ 'auto' => Set to true to make it an auto incrementing column. Set to a numerical value to set
+						from what it should begin counting.
+		- Adds indexes as specified within indexes parameter. Each index should be a member of $indexes. Values are:
+			+ 'name' => Index name (If left empty SMF will generate).
+			+ 'type' => Type of index. Choose from 'primary', 'unique' or 'index'. If not set will default to 'index'.
+			+ 'columns' => Array containing columns that form part of key - in the order the index is to be created.
+		- parameters: (None yet)
+		- if_exists values:
+			+ 'ignore' will do nothing if the table exists. (And will return true)
+			+ 'overwrite' will drop any existing table of the same name.
+			+ 'error' will return false if the table already exists.
+
+*/
+
+// Add the file functions to the $smcFunc array.
 function db_packages_init()
 {
 	global $smcFunc, $reservedTables, $db_package_log, $db_prefix;
@@ -43,9 +67,9 @@ function db_packages_init()
 
 	// We setup an array of SMF tables we can't do auto-remove on - in case a mod writer cocks it up!
 	$reservedTables = array('admin_info_files', 'approval_queue', 'attachments', 'ban_groups', 'ban_items',
-		'board_permissions', 'boards', 'calendar', 'calendar_holidays', 'categories',
+		'board_permissions', 'boards', 'calendar', 'calendar_holidays', 'categories', 'collapsed_categories',
 		'custom_fields', 'group_moderators', 'log_actions', 'log_activity', 'log_banned', 'log_boards',
-		'log_digest', 'log_errors', 'log_floodcontrol', 'log_group_requests', 'log_mark_read',
+		'log_digest', 'log_errors', 'log_floodcontrol', 'log_group_requests', 'log_karma', 'log_mark_read',
 		'log_notify', 'log_online', 'log_packages', 'log_polls', 'log_reported', 'log_reported_comments',
 		'log_scheduled_tasks', 'log_search_messages', 'log_search_results', 'log_search_subjects',
 		'log_search_topics', 'log_topics', 'mail_queue', 'membergroups', 'members', 'message_icons',
@@ -59,37 +83,7 @@ function db_packages_init()
 	db_extend('extra');
 }
 
-/**
- * This function can be used to create a table without worrying about schema
- *  compatibilities across supported database systems.
- *  - If the table exists will, by default, do nothing.
- *  - Builds table with columns as passed to it - at least one column must be sent.
- *  The columns array should have one sub-array for each column - these sub arrays contain:
- *  	'name' = Column name
- *  	'type' = Type of column - values from (smallint, mediumint, int, text, varchar, char, tinytext, mediumtext, largetext)
- *  	'size' => Size of column (If applicable) - for example 255 for a large varchar, 10 for an int etc.
- *  		If not set SMF will pick a size.
- *  	- 'default' = Default value - do not set if no default required.
- *  	- 'null' => Can it be null (true or false) - if not set default will be false.
- *  	- 'auto' => Set to true to make it an auto incrementing column. Set to a numerical value to set from what
- *  		 it should begin counting.
- *  - Adds indexes as specified within indexes parameter. Each index should be a member of $indexes. Values are:
- *  	- 'name' => Index name (If left empty SMF will generate).
- *  	- 'type' => Type of index. Choose from 'primary', 'unique' or 'index'. If not set will default to 'index'.
- *  	- 'columns' => Array containing columns that form part of key - in the order the index is to be created.
- *  - parameters: (None yet)
- *  - if_exists values:
- *  	- 'ignore' will do nothing if the table exists. (And will return true)
- *  	- 'overwrite' will drop any existing table of the same name.
- *  	- 'error' will return false if the table already exists.
- *
- * @param string $table_name The name of the table to create
- * @param array $columns An array of column info in the specified format
- * @param array $indexes An array of index info in the specified format
- * @param array $parameters Currently not used
- * @param string $if_exists What to do if the table exists.
- * @param string $error
- */
+// Create a table.
 function smf_db_create_table($table_name, $columns, $indexes = array(), $parameters = array(), $if_exists = 'ignore', $error = 'fatal')
 {
 	global $reservedTables, $smcFunc, $db_package_log, $db_prefix;
@@ -189,18 +183,9 @@ function smf_db_create_table($table_name, $columns, $indexes = array(), $paramet
 
 	// Go, go power rangers!
 	$smcFunc['db_transaction']('commit');
-
-	return true;
 }
 
-/**
- * Drop a table and its associated sequences.
- *
- * @param string $table_name The name of the table to drop
- * @param array $parameters Not used at the moment
- * @param string $error
- * @return boolean Whether or not the operation was successful
- */
+// Drop a table.
 function smf_db_drop_table($table_name, $parameters = array(), $error = 'fatal')
 {
 	global $reservedTables, $smcFunc, $db_prefix;
@@ -251,19 +236,10 @@ function smf_db_drop_table($table_name, $parameters = array(), $error = 'fatal')
 	return false;
 }
 
-/**
- * This function adds a column.
- *
- * @param string $table_name The name of the table to add the column to
- * @param array $column_info An array of column info (see {@link smf_db_create_table()})
- * @param array $parameters Not used?
- * @param string $if_exists What to do if the column exists. If 'update', column is updated.
- * @param string $error
- * @return boolean Whether or not the operation was successful
- */
+// Add a column.
 function smf_db_add_column($table_name, $column_info, $parameters = array(), $if_exists = 'update', $error = 'fatal')
 {
-	global $smcFunc, $db_package_log, $db_prefix;
+	global $smcFunc, $db_package_log, $txt, $db_prefix;
 
 	$table_name = str_replace('{db_prefix}', $db_prefix, $table_name);
 
@@ -307,15 +283,7 @@ function smf_db_add_column($table_name, $column_info, $parameters = array(), $if
 		return true;
 }
 
-/**
- * Removes a column.
- *
- * @param string $table_name The name of the table to drop the column from
- * @param string $column_name The name of the column to drop
- * @param array $parameters Not used?
- * @param string $error
- * @return boolean Whether or not the operation was successful
- */
+// Remove a column.
 function smf_db_remove_column($table_name, $column_name, $parameters = array(), $error = 'fatal')
 {
 	global $smcFunc, $db_prefix;
@@ -351,15 +319,7 @@ function smf_db_remove_column($table_name, $column_name, $parameters = array(), 
 	return false;
 }
 
-/**
- * Change a column.
- *
- * @param string $table_name The name of the table this column is in
- * @param $old_column The name of the column we want to change
- * @param $column_info An array of info about the "new" column definition (see {@link smf_db_create_table()})
- * @param array $parameters Not used?
- * @param string $error
- */
+// Change a column.
 function smf_db_change_column($table_name, $old_column, $column_info, $parameters = array(), $error = 'fatal')
 {
 	global $smcFunc, $db_prefix;
@@ -407,7 +367,7 @@ function smf_db_change_column($table_name, $old_column, $column_info, $parameter
 		$smcFunc['db_transaction']('begin');
 		if (!$column_info['null'])
 		{
-			// We have to set it to something if we are making it NOT NULL. And we must comply with the current column format.
+			// We have to set it to something if we are making it NOT NULL.
 			$setTo = isset($column_info['default']) ? $column_info['default'] : (strpos($old_info['type'], 'int') !== false ? 0 : '');
 			$smcFunc['db_query']('', '
 				UPDATE ' . $table_name . '
@@ -506,20 +466,9 @@ function smf_db_change_column($table_name, $old_column, $column_info, $parameter
 			);
 		}
 	}
-
-	return true;
 }
 
-/**
- * Add an index.
- *
- * @param string $table_name The name of the table to add the index to
- * @param array $index_info An array of index info (see {@link smf_db_create_table()})
- * @param array $parameters Not used?
- * @param string $if_exists What to do if the index exists. If 'update', the definition will be updated.
- * @param string $error
- * @return boolean Whether or not the operation was successful
- */
+// Add an index.
 function smf_db_add_index($table_name, $index_info, $parameters = array(), $if_exists = 'update', $error = 'fatal')
 {
 	global $smcFunc, $db_package_log, $db_prefix;
@@ -583,15 +532,7 @@ function smf_db_add_index($table_name, $index_info, $parameters = array(), $if_e
 	}
 }
 
-/**
- * Remove an index.
- *
- * @param string $table_name The name of the table to remove the index from
- * @param string $index_name The name of the index to remove
- * @param array $parameters Not used?
- * @param string $error
- * @return boolean Whether or not the operation was successful
- */
+// Remove an index.
 function smf_db_remove_index($table_name, $index_name, $parameters = array(), $error = 'fatal')
 {
 	global $smcFunc, $db_prefix;
@@ -637,18 +578,9 @@ function smf_db_remove_index($table_name, $index_name, $parameters = array(), $e
 	return false;
 }
 
-/**
- * Get the schema formatted name for a type.
- *
- * @param string $type_name The data type (int, varchar, smallint, etc.)
- * @param int $type_size The size (8, 255, etc.)
- * @param boolean $reverse If true, returns specific types for a generic type
- * @return array An array containing the appropriate type and size for this DB type
- */
+// Get the schema formatted name for a type.
 function smf_db_calculate_type($type_name, $type_size = null, $reverse = false)
 {
-	// Let's be sure it's lowercase MySQL likes both, others no.
-	$type_name = strtolower($type_name);
 	// Generic => Specific.
 	if (!$reverse)
 	{
@@ -660,10 +592,6 @@ function smf_db_calculate_type($type_name, $type_size = null, $reverse = false)
 			'tinytext' => 'character varying',
 			'mediumtext' => 'text',
 			'largetext' => 'text',
-			'inet' => 'inet',
-			'time' => 'time without time zone',
-			'datetime' => 'timestamp without time zone',
-			'timestamp' => 'timestamp without time zone',
 		);
 	}
 	else
@@ -672,10 +600,6 @@ function smf_db_calculate_type($type_name, $type_size = null, $reverse = false)
 			'character varying' => 'varchar',
 			'character' => 'char',
 			'integer' => 'int',
-			'inet' => 'inet',
-			'time without time zone' => 'time',
-			'timestamp without time zone' => 'datetime',
-			'numeric' => 'decimal',
 		);
 	}
 
@@ -686,22 +610,14 @@ function smf_db_calculate_type($type_name, $type_size = null, $reverse = false)
 			$type_size = 255;
 		$type_name = $types[$type_name];
 	}
-
-	// Only char fields got size
-	if (strpos($type_name, 'char') === false)
+	// Numbers don't have a size.
+	if (strpos($type_name, 'int') !== false)
 			$type_size = null;
-
 
 	return array($type_name, $type_size);
 }
 
-/**
- * Get table structure.
- *
- * @param string $table_name The name of the table
- * @param array $parameters Not used?
- * @return An array of table structure - the name, the column info from {@link smf_db_list_columns()} and the index info from {@link smf_db_list_indexes()}
- */
+// Get table structure.
 function smf_db_table_structure($table_name, $parameters = array())
 {
 	global $smcFunc, $db_prefix;
@@ -715,14 +631,7 @@ function smf_db_table_structure($table_name, $parameters = array())
 	);
 }
 
-/**
- * Return column information for a table.
- *
- * @param string $table_name The name of the table to get column info for
- * @param bool $detail Whether or not to return detailed info. If true, returns the column info. If false, just returns the column names.
- * @param array $parameters Not used?
- * @return array An array of column names or detailed column info, depending on $detail
- */
+// Return column information for a table.
 function smf_db_list_columns($table_name, $detail = false, $parameters = array())
 {
 	global $smcFunc, $db_prefix;
@@ -777,14 +686,7 @@ function smf_db_list_columns($table_name, $detail = false, $parameters = array()
 	return $columns;
 }
 
-/**
- * Get index information.
- *
- * @param string $table_name The name of the table to get indexes for
- * @param bool $detail Whether or not to return detailed info.
- * @param array $parameters Not used?
- * @return array An array of index names or a detailed array of index info, depending on $detail
- */
+// What about some index information?
 function smf_db_list_indexes($table_name, $detail = false, $parameters = array())
 {
 	global $smcFunc, $db_prefix;
@@ -840,3 +742,5 @@ function smf_db_list_indexes($table_name, $detail = false, $parameters = array()
 
 	return $indexes;
 }
+
+?>

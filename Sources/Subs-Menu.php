@@ -1,30 +1,57 @@
 <?php
 
 /**
- * This file contains a standard way of displaying side/drop down menus for SMF.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.12
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Create a menu.
- * @param array $menuData An array of menu data
- * @param array $menuOptions An array of menu options
- * @return boolean|array False if nothing to show or an array of info about the selected menu item
- */
+/*	This file contains a standard way of displaying side/drop down menus for SMF.
+*/
+
+// Create a menu...
 function createMenu($menuData, $menuOptions = array())
 {
-	global $context, $settings, $txt, $scripturl, $user_info;
+	global $context, $settings, $options, $txt, $modSettings, $scripturl, $smcFunc, $user_info, $sourcedir, $options;
+
+	// First are we toggling use of the side bar generally?
+	if (isset($_GET['togglebar']) && !$user_info['is_guest'])
+	{
+		// Save the new dropdown menu state.
+		$smcFunc['db_insert']('replace',
+			'{db_prefix}themes',
+			array('id_member' => 'int', 'id_theme' => 'int', 'variable' => 'string-255', 'value' => 'string-65534'),
+			array(
+				array(
+					$user_info['id'],
+					$settings['theme_id'],
+					'use_sidebar_menu',
+					empty($options['use_sidebar_menu']) ? '1' : '0',
+				),
+			),
+			array('id_member', 'id_theme', 'variable')
+		);
+
+		// Clear the theme settings cache for this user.
+		$themes = explode(',', $modSettings['knownThemes']);
+		foreach ($themes as $theme)
+			cache_put_data('theme_settings-' . $theme . ':' . $user_info['id'], null, 60);
+
+		// Redirect as this seems to work best.
+		$redirect_url = isset($menuOptions['toggle_redirect_url']) ? $menuOptions['toggle_redirect_url'] : 'action=' . (isset($_GET['action']) ? $_GET['action'] : 'admin') . ';area=' . (isset($_GET['area']) ? $_GET['area'] : 'index') . ';sa=' . (isset($_GET['sa']) ? $_GET['sa'] : 'settings') . (isset($_GET['u']) ? ';u=' . $_GET['u'] : '') . ';' . $context['session_var'] . '=' . $context['session_id'];
+		redirectexit($redirect_url);
+	}
+
+	// Work out where we should get our images from.
+	$context['menu_image_path'] = file_exists($settings['theme_dir'] . '/images/admin/change_menu.png') ? $settings['images_url'] . '/admin' : $settings['default_images_url'] . '/admin';
 
 	/* Note menuData is array of form:
 
@@ -62,10 +89,6 @@ function createMenu($menuData, $menuOptions = array())
 
 	// What is the general action of this menu (i.e. $scripturl?action=XXXX.
 	$menu_context['current_action'] = isset($menuOptions['action']) ? $menuOptions['action'] : $context['current_action'];
-
-	// Allow extend *any* menu with a single hook
-	if (!empty($menu_context['current_action']))
-		call_integration_hook('integrate_' . $menu_context['current_action'] . '_areas', array(&$menuData));
 
 	// What is the current area selected?
 	if (isset($menuOptions['current_area']) || isset($_GET['area']))
@@ -123,31 +146,10 @@ function createMenu($menuData, $menuOptions = array())
 						// Does this area have its own icon?
 						if (!isset($area['force_menu_into_arms_of_another_menu']) && $user_info['name'] == 'iamanoompaloompa')
 							$menu_context['sections'][$section_id]['areas'][$area_id] = safe_unserialize(base64_decode('YTozOntzOjU6ImxhYmVsIjtzOjEyOiJPb21wYSBMb29tcGEiO3M6MzoidXJsIjtzOjQzOiJodHRwOi8vZW4ud2lraXBlZGlhLm9yZy93aWtpL09vbXBhX0xvb21wYXM/IjtzOjQ6Imljb24iO3M6ODY6IjxpbWcgc3JjPSJodHRwOi8vd3d3LnNpbXBsZW1hY2hpbmVzLm9yZy9pbWFnZXMvb29tcGEuZ2lmIiBhbHQ9IkknbSBhbiBPb21wYSBMb29tcGEiIC8+Ijt9'));
-						elseif (isset($area['icon']) && file_exists($settings['theme_dir'] . '/images/admin/' . $area['icon']))
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '<img src="' . $settings['images_url'] . '/admin/' . $area['icon'] . '" alt="">';
-						elseif (isset($area['icon']) && file_exists($settings['default_theme_dir'] . '/images/admin/' . $area['icon']))
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '<img src="' . $settings['default_images_url'] . '/admin/' . $area['icon'] . '" alt="">';
 						elseif (isset($area['icon']))
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '<span class="generic_icons ' . $area['icon'] . '"></span>';
+							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '<img src="' . $context['menu_image_path'] . '/' . $area['icon'] . '" alt="" />&nbsp;&nbsp;';
 						else
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '<span class="generic_icons ' . $area_id . '"></span>';
-
-						if (isset($area['icon_class']) && empty($menu_context['sections'][$section_id]['areas'][$area_id]['icon']))
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon_class'] = $menu_context['current_action'] . '_menu_icon ' . $area['icon_class'];
-						elseif (isset($area['icon']))
-						{
-							if ((substr($area['icon'], -4) === '.png' || substr($area['icon'], -4) === '.gif') && file_exists($settings['theme_dir'] . '/images/admin/big/' . $area['icon']))
-								$menu_context['sections'][$section_id]['areas'][$area_id]['icon_file'] = $settings['theme_url'] . '/images/admin/big/' . $area['icon'];
-							elseif ((substr($area['icon'], -4) === '.png' || substr($area['icon'], -4) === '.gif') && file_exists($settings['default_theme_dir'] . '/images/admin/big/' . $area['icon']))
-								$menu_context['sections'][$section_id]['areas'][$area_id]['icon_file'] = $settings['default_theme_url'] . '/images/admin/big/' . $area['icon'];
-
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon_class'] = $menu_context['current_action'] . '_menu_icon ' . str_replace(array('.png', '.gif'), '', $area['icon']);
-						}
-						else
-							$menu_context['sections'][$section_id]['areas'][$area_id]['icon_class'] = $menu_context['current_action'] . '_menu_icon ' . str_replace(array('.png', '.gif'), '', $area_id);
-
-						// Some areas may be listed but not active, which we show as greyed out.
-						$menu_context['sections'][$section_id]['areas'][$area_id]['inactive'] = !empty($area['inactive']);
+							$menu_context['sections'][$section_id]['areas'][$area_id]['icon'] = '';
 
 						// Did it have subsections?
 						if (!empty($area['subsections']))
@@ -229,28 +231,12 @@ function createMenu($menuData, $menuOptions = array())
 	// Should we use a custom base url, or use the default?
 	$menu_context['base_url'] = isset($menuOptions['base_url']) ? $menuOptions['base_url'] : $scripturl . '?action=' . $menu_context['current_action'];
 
+	// What about the toggle url?
+	$menu_context['toggle_url'] = isset($menuOptions['toggle_url']) ? $menuOptions['toggle_url'] : $menu_context['base_url'] . (!empty($menu_context['current_area']) ? ';area=' . $menu_context['current_area'] : '') . (!empty($menu_context['current_subsection']) ? ';sa=' . $menu_context['current_subsection'] : '') . $menu_context['extra_parameters'] . ';togglebar';
+
 	// If we didn't find the area we were looking for go to a default one.
 	if (isset($backup_area) && empty($found_section))
 		$menu_context['current_area'] = $backup_area;
-
-	// If there are sections quickly goes through all the sections to check if the base menu has an url
-	if (!empty($menu_context['current_section']))
-	{
-		$menu_context['sections'][$menu_context['current_section']]['selected'] = true;
-		$menu_context['sections'][$menu_context['current_section']]['areas'][$menu_context['current_area']]['selected'] = true;
-		if (!empty($menu_context['sections'][$menu_context['current_section']]['areas'][$menu_context['current_area']]['subsections'][$context['current_subaction']]))
-			$menu_context['sections'][$menu_context['current_section']]['areas'][$menu_context['current_area']]['subsections'][$context['current_subaction']]['selected'] = true;
-
-		foreach ($menu_context['sections'] as $section_id => $section)
-			foreach ($section['areas'] as $area_id => $area)
-			{
-				if (!isset($menu_context['sections'][$section_id]['url']))
-				{
-					$menu_context['sections'][$section_id]['url'] = isset($area['url']) ? $area['url'] : $menu_context['base_url'] . ';area=' . $area_id;
-					break;
-				}
-			}
-	}
 
 	// If still no data then return - nothing to show!
 	if (empty($menu_context['sections']))
@@ -263,10 +249,22 @@ function createMenu($menuData, $menuOptions = array())
 		return false;
 	}
 
+	// What type of menu is this?
+	if (empty($menuOptions['menu_type']))
+	{
+		$menuOptions['menu_type'] = '_' . (empty($options['use_sidebar_menu']) ? 'dropdown' : 'sidebar');
+		$menu_context['can_toggle_drop_down'] = !$user_info['is_guest'] && isset($settings['theme_version']) && $settings['theme_version'] >= 2.0;
+	}
+	else
+		$menu_context['can_toggle_drop_down'] = !empty($menuOptions['can_toggle_drop_down']);
+
 	// Almost there - load the template and add to the template layers.
-	loadTemplate(isset($menuOptions['template_name']) ? $menuOptions['template_name'] : 'GenericMenu');
-	$menu_context['layer_name'] = (isset($menuOptions['layer_name']) ? $menuOptions['layer_name'] : 'generic_menu') . '_dropdown';
-	$context['template_layers'][] = $menu_context['layer_name'];
+	if (!WIRELESS)
+	{
+		loadTemplate(isset($menuOptions['template_name']) ? $menuOptions['template_name'] : 'GenericMenu');
+		$menu_context['layer_name'] = (isset($menuOptions['layer_name']) ? $menuOptions['layer_name'] : 'generic_menu') . $menuOptions['menu_type'];
+		$context['template_layers'][] = $menu_context['layer_name'];
+	}
 
 	// Check we had something - for sanity sake.
 	if (empty($include_data))
@@ -283,11 +281,7 @@ function createMenu($menuData, $menuOptions = array())
 	return $include_data;
 }
 
-/**
- * Delete a menu.
- * @param string $menu_id The ID of the menu to destroy or 'last' for the most recent one
- * @return bool|void False if the menu doesn't exist, nothing otherwise
- */
+// Delete a menu.
 function destroyMenu($menu_id = 'last')
 {
 	global $context;
@@ -302,3 +296,5 @@ function destroyMenu($menu_id = 'last')
 
 	unset($context[$menu_name]);
 }
+
+?>

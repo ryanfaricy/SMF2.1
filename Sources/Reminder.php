@@ -1,24 +1,43 @@
 <?php
 
 /**
- * Handle sending out reminders, and checking the secret answer and question.  It uses just a few functions to do this, which are:
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.13
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * This is the controlling delegator
- * @uses Profile language files and Reminder template
- */
+/*	This file deals with sending out reminders, and checking the secret answer
+	and question.  It uses just a few functions to do this, which are:
+
+	void RemindMe()
+		- this is just the controlling delegator.
+		- uses the Profile language files and Reminder template.
+
+	void RemindMail()
+		// !!!
+
+	void setPassword()
+		// !!!
+
+	void setPassword2()
+		// !!!
+
+	void SecretAnswerInput()
+		// !!!
+
+	void SecretAnswer2()
+		// !!!
+*/
+
+// Forgot 'yer password?
 function RemindMe()
 {
 	global $txt, $context;
@@ -39,23 +58,18 @@ function RemindMe()
 
 	// Any subaction?  If none, fall through to the main template, which will ask for one.
 	if (isset($_REQUEST['sa']) && isset($subActions[$_REQUEST['sa']]))
-		call_helper($subActions[$_REQUEST['sa']]);
-
-	// Creating a one time token.
-	else
-		createToken('remind');
+		$subActions[$_REQUEST['sa']]();
 }
 
-/**
- * Allows the user to pick how they wish to be reminded
- */
+// Pick a reminder type.
 function RemindPick()
 {
 	global $context, $txt, $scripturl, $sourcedir, $user_info, $webmaster_email, $smcFunc, $language, $modSettings;
 
 	checkSession();
-	validateToken('remind');
-	createToken('remind');
+
+	$_POST['user'] = isset($_POST['user']) ? $smcFunc['htmlspecialchars']($_POST['user']) : '';
+	$_REQUEST['uid'] = (int) isset($_REQUEST['uid']) ? $_REQUEST['uid'] : 0;
 
 	// Coming with a known ID?
 	if (!empty($_REQUEST['uid']))
@@ -74,20 +88,14 @@ function RemindPick()
 	if (empty($where))
 		fatal_lang_error('username_no_exist', false);
 
-	// Make sure we are not being slammed
-	// Don't call this if you're coming from the "Choose a reminder type" page - otherwise you'll likely get an error
-	if (!isset($_POST['reminder_type']) || !in_array($_POST['reminder_type'], array('email', 'secret')))
-	{
-		spamProtection('remind');
-	}
-
 	// Find the user!
 	$request = $smcFunc['db_query']('', '
-		SELECT id_member, real_name, member_name, email_address, is_activated, validation_code, lngfile, secret_question
+		SELECT id_member, real_name, member_name, email_address, is_activated, validation_code, lngfile, openid_uri, secret_question
 		FROM {db_prefix}members
 		WHERE ' . $where . '
 		LIMIT 1',
-		$where_params
+		array_merge($where_params, array(
+		))
 	);
 	// Maybe email?
 	if ($smcFunc['db_num_rows']($request) == 0 && empty($_REQUEST['uid']))
@@ -95,11 +103,12 @@ function RemindPick()
 		$smcFunc['db_free_result']($request);
 
 		$request = $smcFunc['db_query']('', '
-			SELECT id_member, real_name, member_name, email_address, is_activated, validation_code, lngfile, secret_question
+			SELECT id_member, real_name, member_name, email_address, is_activated, validation_code, lngfile, openid_uri, secret_question
 			FROM {db_prefix}members
 			WHERE email_address = {string:email_address}
 			LIMIT 1',
-			$where_params
+			array_merge($where_params, array(
+			))
 		);
 		if ($smcFunc['db_num_rows']($request) == 0)
 			fatal_lang_error('no_user_with_email', false);
@@ -108,20 +117,22 @@ function RemindPick()
 	$row = $smcFunc['db_fetch_assoc']($request);
 	$smcFunc['db_free_result']($request);
 
+	$context['account_type'] = !empty($row['openid_uri']) ? 'openid' : 'password';
+
 	// If the user isn't activated/approved, give them some feedback on what to do next.
 	if ($row['is_activated'] != 1)
 	{
 		// Awaiting approval...
 		if (trim($row['validation_code']) == '')
-			fatal_error(sprintf($txt['registration_not_approved'], $scripturl . '?action=activate;user=' . $_POST['user']), false);
+			fatal_error($txt['registration_not_approved'] . ' <a href="' . $scripturl . '?action=activate;user=' . $_POST['user'] . '">' . $txt['here'] . '</a>.', false);
 		else
-			fatal_error(sprintf($txt['registration_not_activated'], $scripturl . '?action=activate;user=' . $_POST['user']), false);
+			fatal_error($txt['registration_not_activated'] . ' <a href="' . $scripturl . '?action=activate;user=' . $_POST['user'] . '">' . $txt['here'] . '</a>.', false);
 	}
 
 	// You can't get emailed if you have no email address.
 	$row['email_address'] = trim($row['email_address']);
 	if ($row['email_address'] == '')
-		fatal_error($txt['no_reminder_email'] . '<br>' . $txt['send_email'] . ' <a href="mailto:' . $webmaster_email . '">webmaster</a> ' . $txt['to_ask_password'] . '.');
+		fatal_error($txt['no_reminder_email'] . '<br />' . $txt['send_email'] . ' <a href="mailto:' . $webmaster_email . '">webmaster</a> ' . $txt['to_ask_password'] . '.');
 
 	// If they have no secret question then they can only get emailed the item, or they are requesting the email, send them an email.
 	if (empty($row['secret_question']) || (isset($_POST['reminder_type']) && $_POST['reminder_type'] == 'email'))
@@ -136,20 +147,22 @@ function RemindPick()
 			'REMINDLINK' => $scripturl . '?action=reminder;sa=setpassword;u=' . $row['id_member'] . ';code=' . $password,
 			'IP' => $user_info['ip'],
 			'MEMBERNAME' => $row['member_name'],
+			'OPENID' => $row['openid_uri'],
 		);
 
-		$emaildata = loadEmailTemplate('forgot_password', $replacements, empty($row['lngfile']) || empty($modSettings['userLanguage']) ? $language : $row['lngfile']);
-		$context['description'] = $txt['reminder_sent'];
+		$emaildata = loadEmailTemplate('forgot_' . $context['account_type'], $replacements, empty($row['lngfile']) || empty($modSettings['userLanguage']) ? $language : $row['lngfile']);
+		$context['description'] = $txt['reminder_' . (!empty($row['openid_uri']) ? 'openid_' : '') . 'sent'];
 
-		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, 'reminder', $emaildata['is_html'], 1);
-
-		// Set the password in the database.
-		updateMemberData($row['id_member'], array('validation_code' => substr(md5($password), 0, 10)));
+		// If they were using OpenID simply email them their OpenID identity.
+		sendmail($row['email_address'], $emaildata['subject'], $emaildata['body'], null, null, false, 0);
+		if (empty($row['openid_uri']))
+			// Set the password in the database.
+			updateMemberData($row['id_member'], array('validation_code' => substr(md5($password), 0, 10)));
 
 		// Set up the template.
 		$context['sub_template'] = 'sent';
 
-		// Don't really.
+		// Dont really.
 		return;
 	}
 	// Otherwise are ready to answer the question?
@@ -166,9 +179,7 @@ function RemindPick()
 	);
 }
 
-/**
- * Allows the user to set their new password
- */
+// Set your new password
 function setPassword()
 {
 	global $txt, $context;
@@ -186,22 +197,13 @@ function setPassword()
 		'code' => $_REQUEST['code'],
 		'memID' => (int) $_REQUEST['u']
 	);
-
-	loadJavaScriptFile('register.js', array('defer' => false), 'smf_register');
-
-	// Tokens!
-	createToken('remind-sp');
 }
 
-/**
- * Actually sets the new password
- */
 function setPassword2()
 {
-	global $context, $txt, $smcFunc, $sourcedir;
+	global $context, $txt, $modSettings, $smcFunc, $sourcedir;
 
 	checkSession();
-	validateToken('remind-sp');
 
 	if (empty($_POST['u']) || !isset($_POST['passwrd1']) || !isset($_POST['passwrd2']))
 		fatal_lang_error('no_access', false);
@@ -261,7 +263,7 @@ function setPassword2()
 	validatePasswordFlood($_POST['u'], $flood_value, true);
 
 	// User validated.  Update the database!
-	updateMemberData($_POST['u'], array('validation_code' => '', 'passwd' => hash_password($username, $_POST['passwrd1'])));
+	updateMemberData($_POST['u'], array('validation_code' => '', 'passwd' => sha1(strtolower($username) . $_POST['passwrd1'])));
 
 	call_integration_hook('integrate_reset_pass', array($username, $username, $_POST['passwrd1']));
 
@@ -274,16 +276,12 @@ function setPassword2()
 		'never_expire' => false,
 		'description' => $txt['reminder_password_set']
 	);
-
-	createToken('login');
 }
 
-/**
- * Allows the user to enter their secret answer
- */
+// Get the secret answer.
 function SecretAnswerInput()
 {
-	global $context, $smcFunc;
+	global $txt, $context, $smcFunc;
 
 	checkSession();
 
@@ -296,7 +294,7 @@ function SecretAnswerInput()
 
 	// Get the stuff....
 	$request = $smcFunc['db_query']('', '
-		SELECT id_member, real_name, member_name, secret_question
+		SELECT id_member, real_name, member_name, secret_question, openid_uri
 		FROM {db_prefix}members
 		WHERE id_member = {int:id_member}
 		LIMIT 1',
@@ -310,6 +308,8 @@ function SecretAnswerInput()
 	$row = $smcFunc['db_fetch_assoc']($request);
 	$smcFunc['db_free_result']($request);
 
+	$context['account_type'] = !empty($row['openid_uri']) ? 'openid' : 'password';
+
 	// If there is NO secret question - then throw an error.
 	if (trim($row['secret_question']) == '')
 		fatal_lang_error('registration_no_secret_question', false);
@@ -320,19 +320,13 @@ function SecretAnswerInput()
 	$context['secret_question'] = $row['secret_question'];
 
 	$context['sub_template'] = 'ask';
-	createToken('remind-sai');
-	loadJavaScriptFile('register.js', array('defer' => false), 'smf_register');
 }
 
-/**
- * Validates the secret answer input by the user
- */
 function SecretAnswer2()
 {
-	global $txt, $context, $smcFunc, $sourcedir;
+	global $txt, $context, $modSettings, $smcFunc, $sourcedir;
 
 	checkSession();
-	validateToken('remind-sai');
 
 	// Hacker?  How did you get this far without an email or username?
 	if (empty($_REQUEST['uid']))
@@ -342,7 +336,7 @@ function SecretAnswer2()
 
 	// Get the information from the database.
 	$request = $smcFunc['db_query']('', '
-		SELECT id_member, real_name, member_name, secret_answer, secret_question, email_address
+		SELECT id_member, real_name, member_name, secret_answer, secret_question, openid_uri, email_address
 		FROM {db_prefix}members
 		WHERE id_member = {int:id_member}
 		LIMIT 1',
@@ -363,6 +357,14 @@ function SecretAnswer2()
 		fatal_lang_error('incorrect_answer', false);
 	}
 
+	// If it's OpenID this is where the music ends.
+	if (!empty($row['openid_uri']))
+	{
+		$context['sub_template'] = 'sent';
+		$context['description'] = sprintf($txt['reminder_openid_is'], $row['openid_uri']);
+		return;
+	}
+
 	// You can't use a blank one!
 	if (strlen(trim($_POST['passwrd1'])) === 0)
 		fatal_lang_error('no_password', false);
@@ -380,7 +382,7 @@ function SecretAnswer2()
 		fatal_lang_error('profile_error_password_' . $passwordError, false);
 
 	// Alright, so long as 'yer sure.
-	updateMemberData($row['id_member'], array('passwd' => hash_password($row['member_name'], $_POST['passwrd1'])));
+	updateMemberData($row['id_member'], array('passwd' => sha1(strtolower($row['member_name']) . $_POST['passwrd1'])));
 
 	call_integration_hook('integrate_reset_pass', array($row['member_name'], $row['member_name'], $_POST['passwrd1']));
 
@@ -394,6 +396,6 @@ function SecretAnswer2()
 		'never_expire' => false,
 		'description' => $txt['reminder_password_set']
 	);
-
-	createToken('login');
 }
+
+?>

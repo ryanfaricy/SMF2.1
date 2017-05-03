@@ -180,8 +180,10 @@ smf_StatsCenter.prototype.onBeforeExpandMonth = function (oToggle)
 
 	if (oToggle.opt.aSwappableContainers.length == 0)
 	{
-		// Make the xml call
-		sendXMLDocument.call(this, smf_prepareScriptUrl(smf_scripturl) + 'action=stats;expand=' + oToggle.opt.sMonthId + ';xml', '', this.onDocReceived);
+		// A complicated way to call getXMLDocument, but stay in scope.
+		this.tmpMethod = getXMLDocument;
+		this.oXmlRequestHandle = this.tmpMethod(smf_prepareScriptUrl(smf_scripturl) + 'action=stats;expand=' + oToggle.opt.sMonthId + ';xml', this.onDocReceived);
+		delete this.tmpMethod;
 
 		if ('ajax_indicator' in window)
 			ajax_indicator(true);
@@ -217,7 +219,9 @@ smf_StatsCenter.prototype.onDocReceived = function (oXMLDoc)
 				var oCurCell = oCurRow.insertCell(-1);
 
 				if (this.opt.aDataCells[iCellIndex] == 'date')
-					oCurCell.className = 'stats_day';
+					oCurCell.style.paddingLeft = '6ex';
+				else
+					oCurCell.style.textAlign = 'center';
 
 				var sCurData = aDayNodes[iDayIndex].getAttribute(this.opt.aDataCells[iCellIndex]);
 				oCurCell.appendChild(document.createTextNode(sCurData));

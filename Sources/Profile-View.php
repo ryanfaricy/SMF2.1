@@ -5,47 +5,90 @@
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.12
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * View a summary.
- * @param int $memID The ID of the member
- */
+/*
+
+	void summary(int id_member)
+		// !!!
+
+	void showPosts(int id_member)
+		// !!!
+
+	void showAttachments(int id_member)
+		// !!!
+
+	void statPanel(int id_member)
+		// !!!
+
+	void tracking(int id_member)
+		// !!!
+
+	void trackUser(int id_member)
+		// !!!
+
+	int list_getUserErrorCount(string where)
+		// !!!
+
+	array list_getUserErrors(int start, int items_per_page, string sort, string where, array where_vars)
+		// !!!
+
+	int list_getIPMessageCount(string where)
+		// !!!
+
+	array list_getIPMessages(int start, int items_per_page, string sort, string where, array where_vars)
+		// !!!
+
+	void TrackIP(int id_member = none)
+		// !!!
+
+	void trackEdits(int id_member)
+		// !!!
+
+	int list_getProfileEditCount(int id_member)
+		// !!!
+
+	array list_getProfileEdits(int start, int items_per_page, string sort, int id_member)
+		// !!!
+
+	void showPermissions(int id_member)
+		// !!!
+
+	void viewWarning(int id_member)
+		// !!!
+*/
+
+// View a summary.
 function summary($memID)
 {
-	global $context, $memberContext, $txt, $modSettings, $user_profile, $sourcedir, $scripturl, $smcFunc;
+	global $context, $memberContext, $txt, $modSettings, $user_info, $user_profile, $sourcedir, $scripturl, $smcFunc;
 
 	// Attempt to load the member's profile data.
 	if (!loadMemberContext($memID) || !isset($memberContext[$memID]))
-		fatal_lang_error('not_a_user', false, 404);
+		fatal_lang_error('not_a_user', false);
 
 	// Set up the stuff and load the user.
 	$context += array(
 		'page_title' => sprintf($txt['profile_of_username'], $memberContext[$memID]['name']),
 		'can_send_pm' => allowedTo('pm_send'),
 		'can_have_buddy' => allowedTo('profile_identity_own') && !empty($modSettings['enable_buddylist']),
-		'can_issue_warning' => allowedTo('issue_warning') && $modSettings['warning_settings'][0] == 1,
-		'can_view_warning' => (allowedTo('moderate_forum') || allowedTo('issue_warning') || allowedTo('view_warning_any') || ($context['user']['is_owner'] && allowedTo('view_warning_own')) && $modSettings['warning_settings'][0] === 1)
+		'can_issue_warning' => in_array('w', $context['admin_features']) && allowedTo('issue_warning') && $modSettings['warning_settings'][0] == 1,
 	);
 	$context['member'] = &$memberContext[$memID];
+	$context['can_view_warning'] = in_array('w', $context['admin_features']) && (allowedTo('issue_warning') && !$context['user']['is_owner']) || (!empty($modSettings['warning_show']) && ($modSettings['warning_show'] > 1 || $context['user']['is_owner']));
 
 	// Set a canonical URL for this page.
 	$context['canonical_url'] = $scripturl . '?action=profile;u=' . $memID;
 
 	// Are there things we don't show?
 	$context['disabled_fields'] = isset($modSettings['disabled_profile_fields']) ? array_flip(explode(',', $modSettings['disabled_profile_fields'])) : array();
-	// Menu tab
-	$context[$context['profile_menu_name']]['tab_data'] = array(
-		'title' => $txt['summary'],
-		'icon' => 'profile_hd.png'
-	);
 
 	// See if they have broken any warning levels...
 	list ($modSettings['warning_enable'], $modSettings['user_limit']) = explode(',', $modSettings['warning_settings']);
@@ -94,11 +137,7 @@ function summary($memID)
 	else
 		$context['can_see_ip'] = false;
 
-	// Are they hidden?
-	$context['member']['is_hidden'] = empty($user_profile[$memID]['show_online']);
-	$context['member']['show_last_login'] = allowedTo('admin_forum') || !$context['member']['is_hidden'];
-
-	if (!empty($modSettings['who_enabled']) && $context['member']['show_last_login'])
+	if (!empty($modSettings['who_enabled']))
 	{
 		include_once($sourcedir . '/Who.php');
 		$action = determineActions($user_profile[$memID]['url']);
@@ -116,12 +155,6 @@ function summary($memID)
 
 		// Should we show a custom message?
 		$context['activate_message'] = isset($txt['account_activate_method_' . $context['member']['is_activated'] % 10]) ? $txt['account_activate_method_' . $context['member']['is_activated'] % 10] : $txt['account_not_activated'];
-
-		// If they can be approved, we need to set up a token for them.
-		$context['token_check'] = 'profile-aa' . $memID;
-		createToken($context['token_check'], 'get');
-
-		$context['activate_link'] = $scripturl . '?action=profile;save;area=activateaccount;u=' . $context['id_member'] . ';' . $context['session_var'] . '=' . $context['session_id'] . ';' . $context[$context['token_check'] . '_token_var'] . '=' . $context[$context['token_check'] . '_token'];
 	}
 
 	// Is the signature even enabled on this forum?
@@ -139,14 +172,29 @@ function summary($memID)
 			'time' => time(),
 		);
 		$ban_query[] = 'id_member = ' . $context['member']['id'];
-		$ban_query[] = ' {inet:ip} BETWEEN bi.ip_low and bi.ip_high';
-		$ban_query_vars['ip'] = $memberContext[$memID]['ip'];
-		// Do we have a hostname already?
-		if (!empty($context['member']['hostname']))
+
+		// Valid IP?
+		if (preg_match('/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/', $memberContext[$memID]['ip'], $ip_parts) == 1)
 		{
-			$ban_query[] = '({string:hostname} LIKE hostname)';
-			$ban_query_vars['hostname'] = $context['member']['hostname'];
+			$ban_query[] = '((' . $ip_parts[1] . ' BETWEEN bi.ip_low1 AND bi.ip_high1)
+						AND (' . $ip_parts[2] . ' BETWEEN bi.ip_low2 AND bi.ip_high2)
+						AND (' . $ip_parts[3] . ' BETWEEN bi.ip_low3 AND bi.ip_high3)
+						AND (' . $ip_parts[4] . ' BETWEEN bi.ip_low4 AND bi.ip_high4))';
+
+			// Do we have a hostname already?
+			if (!empty($context['member']['hostname']))
+			{
+				$ban_query[] = '({string:hostname} LIKE hostname)';
+				$ban_query_vars['hostname'] = $context['member']['hostname'];
+			}
 		}
+		// Use '255.255.255.255' for 'unknown' - it's not valid anyway.
+		elseif ($memberContext[$memID]['ip'] == 'unknown')
+			$ban_query[] = '(bi.ip_low1 = 255 AND bi.ip_high1 = 255
+						AND bi.ip_low2 = 255 AND bi.ip_high2 = 255
+						AND bi.ip_low3 = 255 AND bi.ip_high3 = 255
+						AND bi.ip_low4 = 255 AND bi.ip_high4 = 255)';
+
 		// Check their email as well...
 		if (strlen($context['member']['email']) != 0)
 		{
@@ -179,7 +227,7 @@ function summary($memID)
 			$ban_explanation = sprintf($txt['user_cannot_due_to'], implode(', ', $ban_restrictions), '<a href="' . $scripturl . '?action=admin;area=ban;sa=edit;bg=' . $row['id_ban_group'] . '">' . $row['name'] . '</a>');
 
 			$context['member']['bans'][$row['id_ban_group']] = array(
-				'reason' => empty($row['reason']) ? '' : '<br><br><strong>' . $txt['ban_reason'] . ':</strong> ' . $row['reason'],
+				'reason' => empty($row['reason']) ? '' : '<br /><br /><strong>' . $txt['ban_reason'] . ':</strong> ' . $row['reason'],
 				'cannot' => array(
 					'access' => !empty($row['cannot_access']),
 					'register' => !empty($row['cannot_register']),
@@ -191,257 +239,12 @@ function summary($memID)
 		}
 		$smcFunc['db_free_result']($request);
 	}
+
 	loadCustomFields($memID);
-
-	$context['print_custom_fields'] = array();
-
-	// Any custom profile fields?
-	if (!empty($context['custom_fields']))
-		foreach ($context['custom_fields'] as $custom)
-			$context['print_custom_fields'][$context['cust_profile_fields_placement'][$custom['placement']]][] = $custom;
-
 }
 
-/**
- * Fetch the alerts a user currently has.
- *
- * @param int $memID The ID of the member
- * @param bool $all Whether to fetch all alerts or just unread ones
- * @param int $counter How many alerts to display (0 if displaying all or using pagination)
- * @param array $pagination An array containing info for handling pagination. Should have 'start' and 'maxIndex'
- * @return array An array of information about the fetched alerts
- */
-function fetch_alerts($memID, $all = false, $counter = 0, $pagination = array())
-{
-	global $smcFunc, $txt, $scripturl, $memberContext;
-
-	$alerts = array();
-	$request = $smcFunc['db_query']('', '
-		SELECT id_alert, alert_time, mem.id_member AS sender_id, COALESCE(mem.real_name, ua.member_name) AS sender_name,
-			content_type, content_id, content_action, is_read, extra
-		FROM {db_prefix}user_alerts AS ua
-			LEFT JOIN {db_prefix}members AS mem ON (ua.id_member_started = mem.id_member)
-		WHERE ua.id_member = {int:id_member}' . (!$all ? '
-			AND is_read = 0' : '') . '
-		ORDER BY id_alert DESC' . (!empty($counter) && empty($pagination) ? '
-		LIMIT {int:counter}' : '') . (!empty($pagination) && empty($counter) ? '
-		LIMIT {int:start}, {int:maxIndex}' : ''),
-		array(
-			'id_member' => $memID,
-			'counter' => $counter,
-			'start' => !empty($pagination['start']) ? $pagination['start'] : 0,
-			'maxIndex' => !empty($pagination['maxIndex']) ? $pagination['maxIndex'] : 0,
-		)
-	);
-
-	$senders = array();
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-	{
-		$id_alert = array_shift($row);
-		$row['time'] = timeformat($row['alert_time']);
-		$row['extra'] = !empty($row['extra']) ? smf_json_decode($row['extra'], true) : array();
-		$alerts[$id_alert] = $row;
-
-		if (!empty($row['sender_id']))
-			$senders[] = $row['sender_id'];
-	}
-	$smcFunc['db_free_result']($request);
-
-	$senders = loadMemberData($senders);
-	foreach ($senders as $member)
-		loadMemberContext($member);
-
-	// Now go through and actually make with the text.
-	loadLanguage('Alerts');
-
-	// Hooks might want to do something snazzy around their own content types - including enforcing permissions if appropriate.
-	call_integration_hook('integrate_fetch_alerts', array(&$alerts));
-
-	// For anything that wants us to check board or topic access, let's do that.
-	$boards = array();
-	$topics = array();
-	$msgs = array();
-	foreach ($alerts as $id_alert => $alert)
-	{
-		if (isset($alert['extra']['board']))
-			$boards[$alert['extra']['board']] = $txt['board_na'];
-		if (isset($alert['extra']['topic']))
-			$topics[$alert['extra']['topic']] = $txt['topic_na'];
-		if ($alert['content_type'] == 'msg')
-			$msgs[$alert['content_id']] = $txt['topic_na'];
-	}
-
-	// Having figured out what boards etc. there are, let's now get the names of them if we can see them. If not, there's already a fallback set up.
-	if (!empty($boards))
-	{
-		$request = $smcFunc['db_query']('', '
-			SELECT id_board, name
-			FROM {db_prefix}boards AS b
-			WHERE {query_see_board}
-				AND id_board IN ({array_int:boards})',
-			array(
-				'boards' => array_keys($boards),
-			)
-		);
-		while ($row = $smcFunc['db_fetch_assoc']($request))
-			$boards[$row['id_board']] = '<a href="' . $scripturl . '?board=' . $row['id_board'] . '.0">' . $row['name'] . '</a>';
-	}
-	if (!empty($topics))
-	{
-		$request = $smcFunc['db_query']('', '
-			SELECT t.id_topic, m.subject
-			FROM {db_prefix}topics AS t
-				INNER JOIN {db_prefix}messages AS m ON (t.id_first_msg = m.id_msg)
-				INNER JOIN {db_prefix}boards AS b ON (t.id_board = b.id_board)
-			WHERE {query_see_board}
-				AND t.id_topic IN ({array_int:topics})',
-			array(
-				'topics' => array_keys($topics),
-			)
-		);
-		while ($row = $smcFunc['db_fetch_assoc']($request))
-			$topics[$row['id_topic']] = '<a href="' . $scripturl . '?topic=' . $row['id_topic'] . '.0">' . $row['subject'] . '</a>';
-	}
-	if (!empty($msgs))
-	{
-		$request = $smcFunc['db_query']('', '
-			SELECT m.id_msg, t.id_topic, m.subject
-			FROM {db_prefix}messages AS m
-				INNER JOIN {db_prefix}topics AS t ON (t.id_topic = m.id_topic)
-				INNER JOIN {db_prefix}boards AS b ON (m.id_board = b.id_board)
-			WHERE {query_see_board}
-				AND m.id_msg IN ({array_int:msgs})',
-			array(
-				'msgs' => array_keys($msgs),
-			)
-		);
-		while ($row = $smcFunc['db_fetch_assoc']($request))
-			$msgs[$row['id_msg']] = '<a href="' . $scripturl . '?topic=' . $row['id_topic'] . '.msg' . $row['id_msg'] . '#msg' . $row['id_msg'] . '">' . $row['subject'] . '</a>';
-	}
-
-	// Now to go back through the alerts, reattach this extra information and then try to build the string out of it (if a hook didn't already)
-	foreach ($alerts as $id_alert => $alert)
-	{
-		if (!empty($alert['text']))
-			continue;
-		if (isset($alert['extra']['board']))
-			$alerts[$id_alert]['extra']['board_msg'] = $boards[$alert['extra']['board']];
-		if (isset($alert['extra']['topic']))
-			$alerts[$id_alert]['extra']['topic_msg'] = $topics[$alert['extra']['topic']];
-		if ($alert['content_type'] == 'msg')
-			$alerts[$id_alert]['extra']['msg_msg'] = $msgs[$alert['content_id']];
-		if ($alert['content_type'] == 'profile')
-			$alerts[$id_alert]['extra']['profile_msg'] = '<a href="' . $scripturl . '?action=profile;u=' . $alerts[$id_alert]['content_id'] . '">' . $alerts[$id_alert]['extra']['user_name'] . '</a>';
-
-		if (!empty($memberContext[$alert['sender_id']]))
-			$alerts[$id_alert]['sender'] = &$memberContext[$alert['sender_id']];
-
-		$string = 'alert_' . $alert['content_type'] . '_' . $alert['content_action'];
-		if (isset($txt[$string]))
-		{
-			$extra = $alerts[$id_alert]['extra'];
-			$search = array('{member_link}', '{scripturl}');
-			$repl = array(!empty($alert['sender_id']) ? '<a href="' . $scripturl . '?action=profile;u=' . $alert['sender_id'] . '">' . $alert['sender_name'] . '</a>' : $alert['sender_name'], $scripturl);
-			foreach ($extra as $k => $v)
-			{
-				$search[] = '{' . $k . '}';
-				$repl[] = $v;
-			}
-			$alerts[$id_alert]['text'] = str_replace($search, $repl, $txt[$string]);
-		}
-	}
-
-	return $alerts;
-}
-
-/**
- * Shows all alerts for this user
- *
- * @param int $memID The ID of the member
- */
-function showAlerts($memID)
-{
-	global $context, $smcFunc, $txt, $sourcedir, $scripturl;
-
-	require_once($sourcedir . '/Profile-Modify.php');
-
-	// Prepare the pagination vars.
-	$maxIndex = 10;
-	$start = (int) isset($_REQUEST['start']) ? $_REQUEST['start'] : 0;
-	$count = alert_count($memID);
-
-	// Get the alerts.
-	$context['alerts'] = fetch_alerts($memID, true, false, array('start' => $start, 'maxIndex' => $maxIndex));
-	$toMark = false;
-	$action = '';
-
-	// Create the pagination.
-	$context['pagination'] = constructPageIndex($scripturl . '?action=profile;area=showalerts;u=' . $memID, $start, $count, $maxIndex, false);
-
-	// Set some JavaScript for checking all alerts at once.
-	addInlineJavaScript('
-	$(function(){
-		$(\'#select_all\').on(\'change\', function() {
-			var checkboxes = $(\'ul.quickbuttons\').find(\':checkbox\');
-			if($(this).prop(\'checked\')) {
-				checkboxes.prop(\'checked\', true);
-			}
-			else {
-				checkboxes.prop(\'checked\', false);
-			}
-		});
-	});', true);
-
-	// Set a nice message.
-	if (!empty($_SESSION['update_message']))
-	{
-		$context['update_message'] = $txt['profile_updated_own'];
-		unset($_SESSION['update_message']);
-	}
-
-	// Saving multiple changes?
-	if (isset($_GET['save']) && !empty($_POST['mark']))
-	{
-		// Get the values.
-		$toMark = array_map('intval', $_POST['mark']);
-
-		// Which action?
-		$action = !empty($_POST['mark_as']) ? $smcFunc['htmlspecialchars']($smcFunc['htmltrim']($_POST['mark_as'])) : '';
-	}
-
-	// A single change.
-	if (!empty($_GET['do']) && !empty($_GET['aid']))
-	{
-		$toMark = (int) $_GET['aid'];
-		$action = $smcFunc['htmlspecialchars']($smcFunc['htmltrim']($_GET['do']));
-	}
-
-	// Save the changes.
-	if (!empty($toMark) && !empty($action))
-	{
-		checkSession('request');
-
-		// Call it!
-		if ($action == 'remove')
-			alert_delete($toMark, $memID);
-
-		else
-			alert_mark($memID, $toMark, $action == 'read' ? 1 : 0);
-
-		// Set a nice update message.
-		$_SESSION['update_message'] = true;
-
-		// Redirect.
-		redirectexit('action=profile;area=showalerts;u=' . $memID);
-	}
-}
-
-/**
- * Show all posts by the current user
- * @todo This function needs to be split up properly.
- *
- * @param int $memID The ID of the member
- */
+// !!! This function needs to be split up properly.
+// Show all posts by the current user
 function showPosts($memID)
 {
 	global $txt, $user_info, $scripturl, $modSettings;
@@ -455,33 +258,19 @@ function showPosts($memID)
 	$context[$context['profile_menu_name']]['tab_data'] = array(
 		'title' => $txt['showPosts'],
 		'description' => $txt['showPosts_help'],
-		'icon' => 'profile_hd.png',
+		'icon' => 'profile_sm.gif',
 		'tabs' => array(
 			'messages' => array(
 			),
 			'topics' => array(
-			),
-			'unwatchedtopics' => array(
 			),
 			'attach' => array(
 			),
 		),
 	);
 
-	// Shortcut used to determine which $txt['show*'] string to use for the title, based on the SA
-	$title = array(
-		'attach' => 'Attachments',
-		'unwatchedtopics' => 'Unwatched',
-		'topics' => 'Topics'
-	);
-
 	// Set the page title
-	if (isset($_GET['sa']) && array_key_exists($_GET['sa'], $title))
-		$context['page_title'] = $txt['show' . $title[$_GET['sa']]];
-	else
-		$context['page_title'] = $txt['showPosts'];
-
-	$context['page_title'] .= ' - ' . $user_profile[$memID]['real_name'];
+	$context['page_title'] = $txt['showPosts'] . ' - ' . $user_profile[$memID]['real_name'];
 
 	// Is the load average too high to allow searching just now?
 	if (!empty($context['load_average']) && !empty($modSettings['loadavg_show_posts']) && $context['load_average'] >= $modSettings['loadavg_show_posts'])
@@ -490,9 +279,6 @@ function showPosts($memID)
 	// If we're specifically dealing with attachments use that function!
 	if (isset($_GET['sa']) && $_GET['sa'] == 'attach')
 		return showAttachments($memID);
-	// Instead, if we're dealing with unwatched topics (and the feature is enabled) use that other function.
-	elseif (isset($_GET['sa']) && $_GET['sa'] == 'unwatchedtopics')
-		return showUnwatched($memID);
 
 	// Are we just viewing topics?
 	$context['is_topics'] = isset($_GET['sa']) && $_GET['sa'] == 'topics' ? true : false;
@@ -580,14 +366,9 @@ function showPosts($memID)
 	list ($min_msg_member, $max_msg_member) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
 
+	$reverse = false;
 	$range_limit = '';
-
-	if ($context['is_topics'])
-		$maxPerPage = empty($modSettings['disableCustomPerPage']) && !empty($options['topics_per_page']) ? $options['topics_per_page'] : $modSettings['defaultMaxTopics'];
-	else
-		$maxPerPage = empty($modSettings['disableCustomPerPage']) && !empty($options['messages_per_page']) ? $options['messages_per_page'] : $modSettings['defaultMaxMessages'];
-
-	$maxIndex = $maxPerPage;
+	$maxIndex = (int) $modSettings['defaultMaxMessages'];
 
 	// Make sure the starting place makes sense and construct our friend the page index.
 	$context['page_index'] = constructPageIndex($scripturl . '?action=profile;u=' . $memID . ';area=showposts' . ($context['is_topics'] ? ';sa=topics' : '') . (!empty($board) ? ';board=' . $board : ''), $context['start'], $msgCount, $maxIndex);
@@ -598,14 +379,14 @@ function showPosts($memID)
 	$reverse = $_REQUEST['start'] > $msgCount / 2;
 	if ($reverse)
 	{
-		$maxIndex = $msgCount < $context['start'] + $maxPerPage + 1 && $msgCount > $context['start'] ? $msgCount - $context['start'] : $maxPerPage;
-		$start = $msgCount < $context['start'] + $maxPerPage + 1 || $msgCount < $context['start'] + $maxPerPage ? 0 : $msgCount - $context['start'] - $maxPerPage;
+		$maxIndex = $msgCount < $context['start'] + $modSettings['defaultMaxMessages'] + 1 && $msgCount > $context['start'] ? $msgCount - $context['start'] : (int) $modSettings['defaultMaxMessages'];
+		$start = $msgCount < $context['start'] + $modSettings['defaultMaxMessages'] + 1 || $msgCount < $context['start'] + $modSettings['defaultMaxMessages'] ? 0 : $msgCount - $context['start'] - $modSettings['defaultMaxMessages'];
 	}
 
 	// Guess the range of messages to be shown.
 	if ($msgCount > 1000)
 	{
-		$margin = floor(($max_msg_member - $min_msg_member) * (($start + $maxPerPage) / $msgCount) + .1 * ($max_msg_member - $min_msg_member));
+		$margin = floor(($max_msg_member - $min_msg_member) * (($start + $modSettings['defaultMaxMessages']) / $msgCount) + .1 * ($max_msg_member - $min_msg_member));
 		// Make a bigger margin for topics only.
 		if ($context['is_topics'])
 		{
@@ -636,13 +417,11 @@ function showPosts($memID)
 					AND {query_see_board}' . (!$modSettings['postmod_active'] || $context['user']['is_owner'] ? '' : '
 					AND t.approved = {int:is_approved} AND m.approved = {int:is_approved}') . '
 				ORDER BY t.id_first_msg ' . ($reverse ? 'ASC' : 'DESC') . '
-				LIMIT {int:start}, {int:max}',
+				LIMIT ' . $start . ', ' . $maxIndex,
 				array(
 					'current_member' => $memID,
 					'is_approved' => 1,
 					'board' => $board,
-					'start' => $start,
-					'max' => $maxIndex,
 				)
 			);
 		}
@@ -663,13 +442,11 @@ function showPosts($memID)
 					AND {query_see_board}' . (!$modSettings['postmod_active'] || $context['user']['is_owner'] ? '' : '
 					AND t.approved = {int:is_approved} AND m.approved = {int:is_approved}') . '
 				ORDER BY m.id_msg ' . ($reverse ? 'ASC' : 'DESC') . '
-				LIMIT {int:start}, {int:max}',
+				LIMIT ' . $start . ', ' . $maxIndex,
 				array(
 					'current_member' => $memID,
 					'is_approved' => 1,
 					'board' => $board,
-					'start' => $start,
-					'max' => $maxIndex,
 				)
 			);
 		}
@@ -698,6 +475,7 @@ function showPosts($memID)
 		$context['posts'][$counter += $reverse ? -1 : 1] = array(
 			'body' => $row['body'],
 			'counter' => $counter,
+			'alternate' => $counter % 2,
 			'category' => array(
 				'name' => $row['cname'],
 				'id' => $row['id_cat']
@@ -713,11 +491,10 @@ function showPosts($memID)
 			'timestamp' => forum_time(true, $row['poster_time']),
 			'id' => $row['id_msg'],
 			'can_reply' => false,
-			'can_mark_notify' => !$context['user']['is_guest'],
+			'can_mark_notify' => false,
 			'can_delete' => false,
 			'delete_possible' => ($row['id_first_msg'] != $row['id_msg'] || $row['id_last_msg'] == $row['id_msg']) && (empty($modSettings['edit_disable_time']) || $row['poster_time'] + $modSettings['edit_disable_time'] * 60 >= time()),
 			'approved' => $row['approved'],
-			'css_class' => $row['approved'] ? 'windowbg' : 'approvebg',
 		);
 
 		if ($user_info['id'] == $row['id_member_started'])
@@ -738,6 +515,7 @@ function showPosts($memID)
 			),
 			'any' => array(
 				'post_reply_any' => 'can_reply',
+				'mark_any_notify' => 'can_mark_notify',
 			)
 		);
 	else
@@ -748,6 +526,7 @@ function showPosts($memID)
 			),
 			'any' => array(
 				'post_reply_any' => 'can_reply',
+				'mark_any_notify' => 'can_mark_notify',
 				'delete_any' => 'can_delete',
 			)
 		);
@@ -785,206 +564,19 @@ function showPosts($memID)
 		$context['posts'][$counter]['can_delete'] &= $context['posts'][$counter]['delete_possible'];
 		$context['posts'][$counter]['can_quote'] = $context['posts'][$counter]['can_reply'] && $quote_enabled;
 	}
-
-	// Allow last minute changes.
-	call_integration_hook('integrate_profile_showPosts');
 }
 
-/**
- * Show all the attachments of a user.
- *
- * @param int $memID The ID of the member
- */
+// Show all the attachments of a user.
 function showAttachments($memID)
 {
-	global $txt, $scripturl, $modSettings;
-	global $sourcedir;
+	global $txt, $user_info, $scripturl, $modSettings, $board;
+	global $context, $user_profile, $sourcedir, $smcFunc;
 
 	// OBEY permissions!
 	$boardsAllowed = boardsAllowedTo('view_attachments');
-
 	// Make sure we can't actually see anything...
 	if (empty($boardsAllowed))
 		$boardsAllowed = array(-1);
-
-	require_once($sourcedir . '/Subs-List.php');
-
-	// This is all the information required to list attachments.
-	$listOptions = array(
-		'id' => 'attachments',
-		'width' => '100%',
-		'items_per_page' => $modSettings['defaultMaxListItems'],
-		'no_items_label' => $txt['show_attachments_none'],
-		'base_href' => $scripturl . '?action=profile;area=showposts;sa=attach;u=' . $memID,
-		'default_sort_col' => 'filename',
-		'get_items' => array(
-			'function' => 'list_getAttachments',
-			'params' => array(
-				$boardsAllowed,
-				$memID,
-			),
-		),
-		'get_count' => array(
-			'function' => 'list_getNumAttachments',
-			'params' => array(
-				$boardsAllowed,
-				$memID,
-			),
-		),
-		'data_check' => array(
-			'class' => function($data)
-			{
-				return $data['approved'] ? '' : 'approvebg';
-			}
-		),
-		'columns' => array(
-			'filename' => array(
-				'header' => array(
-					'value' => $txt['show_attach_filename'],
-					'class' => 'lefttext',
-					'style' => 'width: 25%;',
-				),
-				'data' => array(
-					'sprintf' => array(
-						'format' => '<a href="' . $scripturl . '?action=dlattach;topic=%1$d.0;attach=%2$d">%3$s</a>',
-						'params' => array(
-							'topic' => true,
-							'id' => true,
-							'filename' => false,
-						),
-					),
-				),
-				'sort' => array(
-					'default' => 'a.filename',
-					'reverse' => 'a.filename DESC',
-				),
-			),
-			'downloads' => array(
-				'header' => array(
-					'value' => $txt['show_attach_downloads'],
-					'style' => 'width: 12%;',
-				),
-				'data' => array(
-					'db' => 'downloads',
-					'comma_format' => true,
-				),
-				'sort' => array(
-					'default' => 'a.downloads',
-					'reverse' => 'a.downloads DESC',
-				),
-			),
-			'subject' => array(
-				'header' => array(
-					'value' => $txt['message'],
-					'class' => 'lefttext',
-					'style' => 'width: 30%;',
-				),
-				'data' => array(
-					'sprintf' => array(
-						'format' => '<a href="' . $scripturl . '?msg=%1$d">%2$s</a>',
-						'params' => array(
-							'msg' => true,
-							'subject' => false,
-						),
-					),
-				),
-				'sort' => array(
-					'default' => 'm.subject',
-					'reverse' => 'm.subject DESC',
-				),
-			),
-			'posted' => array(
-				'header' => array(
-					'value' => $txt['show_attach_posted'],
-					'class' => 'lefttext',
-				),
-				'data' => array(
-					'db' => 'posted',
-					'timeformat' => true,
-				),
-				'sort' => array(
-					'default' => 'm.poster_time',
-					'reverse' => 'm.poster_time DESC',
-				),
-			),
-		),
-	);
-
-	// Create the request list.
-	createList($listOptions);
-}
-
-/**
- * Get a list of attachments for this user. Callback for the list in showAttachments()
- *
- * @param int $start Which item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param array $boardsAllowed An array containing the IDs of the boards they can see
- * @param int $memID The ID of the member
- * @return array An array of information about the attachments
- */
-function list_getAttachments($start, $items_per_page, $sort, $boardsAllowed, $memID)
-{
-	global $smcFunc, $board, $modSettings, $context;
-
-	// Retrieve some attachments.
-	$request = $smcFunc['db_query']('', '
-		SELECT a.id_attach, a.id_msg, a.filename, a.downloads, a.approved, m.id_msg, m.id_topic,
-			m.id_board, m.poster_time, m.subject, b.name
-		FROM {db_prefix}attachments AS a
-			INNER JOIN {db_prefix}messages AS m ON (m.id_msg = a.id_msg)
-			INNER JOIN {db_prefix}boards AS b ON (b.id_board = m.id_board AND {query_see_board})
-		WHERE a.attachment_type = {int:attachment_type}
-			AND a.id_msg != {int:no_message}
-			AND m.id_member = {int:current_member}' . (!empty($board) ? '
-			AND b.id_board = {int:board}' : '') . (!in_array(0, $boardsAllowed) ? '
-			AND b.id_board IN ({array_int:boards_list})' : '') . (!$modSettings['postmod_active'] || $context['user']['is_owner'] ? '' : '
-			AND m.approved = {int:is_approved}') . '
-		ORDER BY {raw:sort}
-		LIMIT {int:offset}, {int:limit}',
-		array(
-			'boards_list' => $boardsAllowed,
-			'attachment_type' => 0,
-			'no_message' => 0,
-			'current_member' => $memID,
-			'is_approved' => 1,
-			'board' => $board,
-			'sort' => $sort,
-			'offset' => $start,
-			'limit' => $items_per_page,
-		)
-	);
-	$attachments = array();
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-		$attachments[] = array(
-			'id' => $row['id_attach'],
-			'filename' => $row['filename'],
-			'downloads' => $row['downloads'],
-			'subject' => censorText($row['subject']),
-			'posted' => $row['poster_time'],
-			'msg' => $row['id_msg'],
-			'topic' => $row['id_topic'],
-			'board' => $row['id_board'],
-			'board_name' => $row['name'],
-			'approved' => $row['approved'],
-		);
-
-	$smcFunc['db_free_result']($request);
-
-	return $attachments;
-}
-
-/**
- * Gets the total number of attachments for the user
- *
- * @param array $boardsAllowed An array of the IDs of the boards they can see
- * @param int $memID The ID of the member
- * @return int The number of attachments
- */
-function list_getNumAttachments($boardsAllowed, $memID)
-{
-	global $board, $smcFunc, $modSettings, $context;
 
 	// Get the total number of attachments they have posted.
 	$request = $smcFunc['db_query']('', '
@@ -1010,249 +602,82 @@ function list_getNumAttachments($boardsAllowed, $memID)
 	list ($attachCount) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
 
-	return $attachCount;
-}
+	$maxIndex = (int) $modSettings['defaultMaxMessages'];
 
-/**
- * Show all the unwatched topics.
- *
- * @param int $memID The ID of the member
- */
-function showUnwatched($memID)
-{
-	global $txt, $user_info, $scripturl, $modSettings, $context, $sourcedir;
-
-	// Only the owner can see the list (if the function is enabled of course)
-	if ($user_info['id'] != $memID)
-		return;
-
-	require_once($sourcedir . '/Subs-List.php');
-
-	// And here they are: the topics you don't like
-	$listOptions = array(
-		'id' => 'unwatched_topics',
-		'width' => '100%',
-		'items_per_page' => (empty($modSettings['disableCustomPerPage']) && !empty($options['topics_per_page'])) ? $options['topics_per_page'] : $modSettings['defaultMaxTopics'],
-		'no_items_label' => $txt['unwatched_topics_none'],
-		'base_href' => $scripturl . '?action=profile;area=showposts;sa=unwatchedtopics;u=' . $memID,
-		'default_sort_col' => 'started_on',
-		'get_items' => array(
-			'function' => 'list_getUnwatched',
-			'params' => array(
-				$memID,
-			),
-		),
-		'get_count' => array(
-			'function' => 'list_getNumUnwatched',
-			'params' => array(
-				$memID,
-			),
-		),
-		'columns' => array(
-			'subject' => array(
-				'header' => array(
-					'value' => $txt['subject'],
-					'class' => 'lefttext',
-					'style' => 'width: 30%;',
-				),
-				'data' => array(
-					'sprintf' => array(
-						'format' => '<a href="' . $scripturl . '?topic=%1$d.0">%2$s</a>',
-						'params' => array(
-							'id_topic' => false,
-							'subject' => false,
-						),
-					),
-				),
-				'sort' => array(
-					'default' => 'm.subject',
-					'reverse' => 'm.subject DESC',
-				),
-			),
-			'started_by' => array(
-				'header' => array(
-					'value' => $txt['started_by'],
-					'style' => 'width: 15%;',
-				),
-				'data' => array(
-					'db' => 'started_by',
-				),
-				'sort' => array(
-					'default' => 'mem.real_name',
-					'reverse' => 'mem.real_name DESC',
-				),
-			),
-			'started_on' => array(
-				'header' => array(
-					'value' => $txt['on'],
-					'class' => 'lefttext',
-					'style' => 'width: 20%;',
-				),
-				'data' => array(
-					'db' => 'started_on',
-					'timeformat' => true,
-				),
-				'sort' => array(
-					'default' => 'm.poster_time',
-					'reverse' => 'm.poster_time DESC',
-				),
-			),
-			'last_post_by' => array(
-				'header' => array(
-					'value' => $txt['last_post'],
-					'style' => 'width: 15%;',
-				),
-				'data' => array(
-					'db' => 'last_post_by',
-				),
-				'sort' => array(
-					'default' => 'mem.real_name',
-					'reverse' => 'mem.real_name DESC',
-				),
-			),
-			'last_post_on' => array(
-				'header' => array(
-					'value' => $txt['on'],
-					'class' => 'lefttext',
-					'style' => 'width: 20%;',
-				),
-				'data' => array(
-					'db' => 'last_post_on',
-					'timeformat' => true,
-				),
-				'sort' => array(
-					'default' => 'm.poster_time',
-					'reverse' => 'm.poster_time DESC',
-				),
-			),
-		),
+	// What about ordering?
+	$sortTypes = array(
+		'filename' => 'a.filename',
+		'downloads' => 'a.downloads',
+		'subject' => 'm.subject',
+		'posted' => 'm.poster_time',
 	);
+	$context['sort_order'] = isset($_GET['sort']) && isset($sortTypes[$_GET['sort']]) ? $_GET['sort'] : 'posted';
+	$context['sort_direction'] = isset($_GET['asc']) ? 'up' : 'down';
 
-	// Create the request list.
-	createList($listOptions);
+	$sort = $sortTypes[$context['sort_order']];
 
-	$context['sub_template'] = 'show_list';
-	$context['default_list'] = 'unwatched_topics';
-}
+	// Let's get ourselves a lovely page index.
+	$context['page_index'] = constructPageIndex($scripturl . '?action=profile;u=' . $memID . ';area=showposts;sa=attach;sort=' . $context['sort_order'] . ($context['sort_direction'] == 'up' ? ';asc' : ''), $context['start'], $attachCount, $maxIndex);
 
-/**
- * Gets information about unwatched (disregarded) topics. Callback for the list in show_unwatched
- *
- * @param int $start The item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param int $memID The ID of the member
- * @return array An array of information about the unwatched topics
- */
-function list_getUnwatched($start, $items_per_page, $sort, $memID)
-{
-	global $smcFunc;
-
-	// Get the list of topics we can see
+	// Retrieve some attachments.
 	$request = $smcFunc['db_query']('', '
-		SELECT lt.id_topic
-		FROM {db_prefix}log_topics as lt
-			LEFT JOIN {db_prefix}topics as t ON (lt.id_topic = t.id_topic)
-			LEFT JOIN {db_prefix}boards as b ON (t.id_board = b.id_board)
-			LEFT JOIN {db_prefix}messages as m ON (t.id_first_msg = m.id_msg)' . (in_array($sort, array('mem.real_name', 'mem.real_name DESC', 'mem.poster_time', 'mem.poster_time DESC')) ? '
-			LEFT JOIN {db_prefix}members as mem ON (m.id_member = mem.id_member)' : '') . '
-		WHERE lt.id_member = {int:current_member}
-			AND unwatched = 1
-			AND {query_see_board}
+		SELECT a.id_attach, a.id_msg, a.filename, a.downloads, a.approved, m.id_msg, m.id_topic,
+			m.id_board, m.poster_time, m.subject, b.name
+		FROM {db_prefix}attachments AS a
+			INNER JOIN {db_prefix}messages AS m ON (m.id_msg = a.id_msg)
+			INNER JOIN {db_prefix}boards AS b ON (b.id_board = m.id_board AND {query_see_board})
+		WHERE a.attachment_type = {int:attachment_type}
+			AND a.id_msg != {int:no_message}
+			AND m.id_member = {int:current_member}' . (!empty($board) ? '
+			AND b.id_board = {int:board}' : '') . (!in_array(0, $boardsAllowed) ? '
+			AND b.id_board IN ({array_int:boards_list})' : '') . (!$modSettings['postmod_active'] || $context['user']['is_owner'] ? '' : '
+			AND m.approved = {int:is_approved}') . '
 		ORDER BY {raw:sort}
 		LIMIT {int:offset}, {int:limit}',
 		array(
+			'boards_list' => $boardsAllowed,
+			'attachment_type' => 0,
+			'no_message' => 0,
 			'current_member' => $memID,
-			'sort' => $sort,
-			'offset' => $start,
-			'limit' => $items_per_page,
+			'is_approved' => 1,
+			'board' => $board,
+			'sort' => $sort . ' ' . ($context['sort_direction'] == 'down' ? 'DESC' : 'ASC'),
+			'offset' => $context['start'],
+			'limit' => $maxIndex,
 		)
 	);
-
-	$topics = array();
+	$context['attachments'] = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
-		$topics[] = $row['id_topic'];
-
-	$smcFunc['db_free_result']($request);
-
-	// Any topics found?
-	$topicsInfo = array();
-	if (!empty($topics))
 	{
-		$request = $smcFunc['db_query']('', '
-			SELECT mf.subject, mf.poster_time as started_on, COALESCE(memf.real_name, mf.poster_name) as started_by, ml.poster_time as last_post_on, COALESCE(meml.real_name, ml.poster_name) as last_post_by, t.id_topic
-			FROM {db_prefix}topics AS t
-				INNER JOIN {db_prefix}messages AS ml ON (ml.id_msg = t.id_last_msg)
-				INNER JOIN {db_prefix}messages AS mf ON (mf.id_msg = t.id_first_msg)
-				LEFT JOIN {db_prefix}members AS meml ON (meml.id_member = ml.id_member)
-				LEFT JOIN {db_prefix}members AS memf ON (memf.id_member = mf.id_member)
-			WHERE t.id_topic IN ({array_int:topics})',
-			array(
-				'topics' => $topics,
-			)
+		$row['subject'] = censorText($row['subject']);
+
+		$context['attachments'][] = array(
+			'id' => $row['id_attach'],
+			'filename' => $row['filename'],
+			'downloads' => $row['downloads'],
+			'subject' => $row['subject'],
+			'posted' => timeformat($row['poster_time']),
+			'msg' => $row['id_msg'],
+			'topic' => $row['id_topic'],
+			'board' => $row['id_board'],
+			'board_name' => $row['name'],
+			'approved' => $row['approved'],
 		);
-		while ($row = $smcFunc['db_fetch_assoc']($request))
-			$topicsInfo[] = $row;
-		$smcFunc['db_free_result']($request);
 	}
-
-	return $topicsInfo;
-}
-
-/**
- * Count the number of topics in the unwatched list
- *
- * @param int $memID The ID of the member
- * @return int The number of unwatched topics
- */
-function list_getNumUnwatched($memID)
-{
-	global $smcFunc;
-
-	// Get the total number of attachments they have posted.
-	$request = $smcFunc['db_query']('', '
-		SELECT COUNT(*)
-		FROM {db_prefix}log_topics as lt
-		LEFT JOIN {db_prefix}topics as t ON (lt.id_topic = t.id_topic)
-		LEFT JOIN {db_prefix}boards as b ON (t.id_board = b.id_board)
-		WHERE id_member = {int:current_member}
-			AND unwatched = 1
-			AND {query_see_board}',
-		array(
-			'current_member' => $memID,
-		)
-	);
-	list ($unwatchedCount) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
-
-	return $unwatchedCount;
 }
 
-/**
- * Gets the user stats for display
- *
- * @param int $memID The ID of the member
- */
 function statPanel($memID)
 {
 	global $txt, $scripturl, $context, $user_profile, $user_info, $modSettings, $smcFunc;
 
 	$context['page_title'] = $txt['statPanel_showStats'] . ' ' . $user_profile[$memID]['real_name'];
 
-	// Is the load average too high to allow searching just now?
-	if (!empty($context['load_average']) && !empty($modSettings['loadavg_userstats']) && $context['load_average'] >= $modSettings['loadavg_userstats'])
-		fatal_lang_error('loadavg_userstats_disabled', false);
-
 	// General user statistics.
 	$timeDays = floor($user_profile[$memID]['total_time_logged_in'] / 86400);
 	$timeHours = floor(($user_profile[$memID]['total_time_logged_in'] % 86400) / 3600);
 	$context['time_logged_in'] = ($timeDays > 0 ? $timeDays . $txt['totalTimeLogged2'] : '') . ($timeHours > 0 ? $timeHours . $txt['totalTimeLogged3'] : '') . floor(($user_profile[$memID]['total_time_logged_in'] % 3600) / 60) . $txt['totalTimeLogged4'];
 	$context['num_posts'] = comma_format($user_profile[$memID]['posts']);
-	// Menu tab
-	$context[$context['profile_menu_name']]['tab_data'] = array(
-		'title' => $txt['statPanel_generalStats'] . ' - ' . $context['member']['name'],
-		'icon' => 'stats_info_hd.png'
-	);
 
 	// Number of topics started.
 	$result = $smcFunc['db_query']('', '
@@ -1420,79 +845,47 @@ function statPanel($memID)
 
 	// Put it in the right order.
 	ksort($context['posts_by_time']);
-
-	// Custom stats (just add a template_layer to add it to the template!)
- 	call_integration_hook('integrate_profile_stats', array($memID));
 }
 
-/**
- * Loads up the information for the "track user" section of the profile
- *
- * @param int $memID The ID of the member
- */
 function tracking($memID)
 {
-	global $context, $txt, $modSettings, $user_profile;
+	global $sourcedir, $context, $txt, $scripturl, $modSettings, $user_profile;
 
 	$subActions = array(
-		'activity' => array('trackActivity', $txt['trackActivity'], 'moderate_forum'),
-		'ip' => array('TrackIP', $txt['trackIP'], 'moderate_forum'),
-		'edits' => array('trackEdits', $txt['trackEdits'], 'moderate_forum'),
-		'groupreq' => array('trackGroupReq', $txt['trackGroupRequests'], 'approve_group_requests'),
-		'logins' => array('TrackLogins', $txt['trackLogins'], 'moderate_forum'),
+		'activity' => array('trackActivity', $txt['trackActivity']),
+		'ip' => array('TrackIP', $txt['trackIP']),
+		'edits' => array('trackEdits', $txt['trackEdits']),
 	);
 
-	foreach ($subActions as $sa => $action)
-	{
-		if (!allowedTo($action[2]))
-			unset($subActions[$sa]);
-	}
+	$context['tracking_area'] = isset($_GET['sa']) && isset($subActions[$_GET['sa']]) ? $_GET['sa'] : 'activity';
+
+	if (isset($types[$context['tracking_area']][1]))
+		require_once($sourcedir . '/' . $types[$context['tracking_area']][1]);
 
 	// Create the tabs for the template.
 	$context[$context['profile_menu_name']]['tab_data'] = array(
 		'title' => $txt['tracking'],
 		'description' => $txt['tracking_description'],
-		'icon' => 'profile_hd.png',
+		'icon' => 'profile_sm.gif',
 		'tabs' => array(
 			'activity' => array(),
 			'ip' => array(),
 			'edits' => array(),
-			'groupreq' => array(),
-			'logins' => array(),
 		),
 	);
 
 	// Moderation must be on to track edits.
-	if (empty($modSettings['userlog_enabled']))
-		unset($context[$context['profile_menu_name']]['tab_data']['edits'], $subActions['edits']);
-
-	// Group requests must be active to show it...
-	if (empty($modSettings['show_group_membership']))
-		unset($context[$context['profile_menu_name']]['tab_data']['groupreq'], $subActions['groupreq']);
-
-	if (empty($subActions))
-		fatal_lang_error('no_access', false);
-
-	$keys = array_keys($subActions);
-	$default = array_shift($keys);
-	$context['tracking_area'] = isset($_GET['sa']) && isset($subActions[$_GET['sa']]) ? $_GET['sa'] : $default;
+	if (empty($modSettings['modlog_enabled']))
+		unset($context[$context['profile_menu_name']]['tab_data']['edits']);
 
 	// Set a page title.
 	$context['page_title'] = $txt['trackUser'] . ' - ' . $subActions[$context['tracking_area']][1] . ' - ' . $user_profile[$memID]['real_name'];
 
 	// Pass on to the actual function.
 	$context['sub_template'] = $subActions[$context['tracking_area']][0];
-	$call = call_helper($subActions[$context['tracking_area']][0], true);
-
-	if (!empty($call))
-		call_user_func($call, $memID);
+	$subActions[$context['tracking_area']][0]($memID);
 }
 
-/**
- * Handles tracking a user's activity
- *
- * @param int $memID The ID of the member
- */
 function trackActivity($memID)
 {
 	global $scripturl, $txt, $modSettings, $sourcedir;
@@ -1510,7 +903,7 @@ function trackActivity($memID)
 	$listOptions = array(
 		'id' => 'track_user_list',
 		'title' => $txt['errors_by'] . ' ' . $context['member']['name'],
-		'items_per_page' => $modSettings['defaultMaxListItems'],
+		'items_per_page' => $modSettings['defaultMaxMessages'],
 		'no_items_label' => $txt['no_errors_from_user'],
 		'base_href' => $scripturl . '?action=profile;area=tracking;sa=user;u=' . $memID,
 		'default_sort_col' => 'date',
@@ -1535,7 +928,7 @@ function trackActivity($memID)
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '<a href="' . $scripturl . '?action=profile;area=tracking;sa=ip;searchip=%1$s;u=' . $memID . '">%1$s</a>',
+						'format' => '<a href="' . $scripturl . '?action=profile;area=tracking;sa=ip;searchip=%1$s;u=' . $memID. '">%1$s</a>',
 						'params' => array(
 							'ip' => false,
 						),
@@ -1552,7 +945,7 @@ function trackActivity($memID)
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '%1$s<br><a href="%2$s">%2$s</a>',
+						'format' => '%1$s<br /><a href="%2$s">%2$s</a>',
 						'params' => array(
 							'message' => false,
 							'url' => false,
@@ -1577,6 +970,8 @@ function trackActivity($memID)
 			array(
 				'position' => 'after_title',
 				'value' => $txt['errors_desc'],
+				'class' => 'smalltext',
+				'style' => 'padding: 2ex;',
 			),
 		),
 	);
@@ -1585,7 +980,6 @@ function trackActivity($memID)
 	require_once($sourcedir . '/Subs-List.php');
 	createList($listOptions);
 
-	// @todo cache this
 	// If this is a big forum, or a large posting user, let's limit the search.
 	if ($modSettings['totalMessages'] > 50000 && $user_profile[$memID]['posts'] > 500)
 	{
@@ -1610,7 +1004,6 @@ function trackActivity($memID)
 		$user_profile[$memID]['member_ip2'],
 	);
 
-	// @todo cache this
 	// Get all IP addresses this user has used for his messages.
 	$request = $smcFunc['db_query']('', '
 		SELECT poster_ip
@@ -1628,8 +1021,8 @@ function trackActivity($memID)
 	$context['ips'] = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
-		$context['ips'][] = '<a href="' . $scripturl . '?action=profile;area=tracking;sa=ip;searchip=' . inet_dtop($row['poster_ip']) . ';u=' . $memID . '">' . inet_dtop($row['poster_ip']) . '</a>';
-		$ips[] = inet_dtop($row['poster_ip']);
+		$context['ips'][] = '<a href="' . $scripturl . '?action=profile;area=tracking;sa=ip;searchip=' . $row['poster_ip'] . ';u=' . $memID . '">' . $row['poster_ip'] . '</a>';
+		$ips[] = $row['poster_ip'];
 	}
 	$smcFunc['db_free_result']($request);
 
@@ -1647,7 +1040,7 @@ function trackActivity($memID)
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
 		$context['error_ips'][] = '<a href="' . $scripturl . '?action=profile;area=tracking;sa=ip;searchip=' . $row['ip'] . ';u=' . $memID . '">' . $row['ip'] . '</a>';
-		$ips[] = inet_dtop($row['ip']);
+		$ips[] = $row['ip'];
 	}
 	$smcFunc['db_free_result']($request);
 
@@ -1661,8 +1054,9 @@ function trackActivity($memID)
 			SELECT mem.id_member
 			FROM {db_prefix}messages AS m
 				INNER JOIN {db_prefix}members AS mem ON (mem.id_member = m.id_member)
-			WHERE m.poster_ip IN ({array_inet:ip_list})
-				AND mem.id_member != {int:current_member}',
+			WHERE m.poster_ip IN ({array_string:ip_list})
+			GROUP BY mem.id_member
+			HAVING mem.id_member != {int:current_member}',
 			array(
 				'current_member' => $memID,
 				'ip_list' => $ips,
@@ -1694,7 +1088,7 @@ function trackActivity($memID)
 			SELECT id_member, real_name
 			FROM {db_prefix}members
 			WHERE id_member != {int:current_member}
-				AND member_ip IN ({array_inet:ip_list})',
+				AND member_ip IN ({array_string:ip_list})',
 			array(
 				'current_member' => $memID,
 				'ip_list' => $ips,
@@ -1706,13 +1100,6 @@ function trackActivity($memID)
 	}
 }
 
-/**
- * Get the number of user errors
- *
- * @param string $where A query to limit which errors are counted
- * @param array $where_vars The parameters for $where
- * @return int Number of user errors
- */
 function list_getUserErrorCount($where, $where_vars = array())
 {
 	global $smcFunc;
@@ -1726,19 +1113,9 @@ function list_getUserErrorCount($where, $where_vars = array())
 	list ($count) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
 
-	return (int) $count;
+	return $count;
 }
 
-/**
- * Gets all of the errors generated by a user's actions. Callback for the list in track_activity
- *
- * @param int $start Which item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param string $where A query indicating how to filter the results (eg 'id_member={int:id_member}')
- * @param array $where_vars An array of parameters for $where
- * @return array An array of information about the error messages
- */
 function list_getUserErrors($start, $items_per_page, $sort, $where, $where_vars = array())
 {
 	global $smcFunc, $txt, $scripturl;
@@ -1746,24 +1123,21 @@ function list_getUserErrors($start, $items_per_page, $sort, $where, $where_vars 
 	// Get a list of error messages from this ip (range).
 	$request = $smcFunc['db_query']('', '
 		SELECT
-			le.log_time, le.ip, le.url, le.message, COALESCE(mem.id_member, 0) AS id_member,
-			COALESCE(mem.real_name, {string:guest_title}) AS display_name, mem.member_name
+			le.log_time, le.ip, le.url, le.message, IFNULL(mem.id_member, 0) AS id_member,
+			IFNULL(mem.real_name, {string:guest_title}) AS display_name, mem.member_name
 		FROM {db_prefix}log_errors AS le
 			LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = le.id_member)
 		WHERE ' . $where . '
-		ORDER BY {raw:sort}
-		LIMIT {int:start}, {int:max}',
+		ORDER BY ' . $sort . '
+		LIMIT ' . $start . ', ' . $items_per_page,
 		array_merge($where_vars, array(
 			'guest_title' => $txt['guest_title'],
-			'sort' => $sort,
-			'start' => $start,
-			'max' => $items_per_page,
 		))
 	);
 	$error_messages = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 		$error_messages[] = array(
-			'ip' => inet_dtop($row['ip']),
+			'ip' => $row['ip'],
 			'member_link' => $row['id_member'] > 0 ? '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['display_name'] . '</a>' : $row['display_name'],
 			'message' => strtr($row['message'], array('&lt;span class=&quot;remove&quot;&gt;' => '', '&lt;/span&gt;' => '')),
 			'url' => $row['url'],
@@ -1775,13 +1149,6 @@ function list_getUserErrors($start, $items_per_page, $sort, $where, $where_vars 
 	return $error_messages;
 }
 
-/**
- * Gets the number of posts made from a particular IP
- *
- * @param string $where A query indicating which posts to count
- * @param array $where_vars The parameters for $where
- * @return int Count of messages matching the IP
- */
 function list_getIPMessageCount($where, $where_vars = array())
 {
 	global $smcFunc;
@@ -1796,45 +1163,32 @@ function list_getIPMessageCount($where, $where_vars = array())
 	list ($count) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
 
-	return (int) $count;
+	return $count;
 }
 
-/**
- * Gets all the posts made from a particular IP
- *
- * @param int $start Which item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param string $where A query to filter which posts are returned
- * @param array $where_vars An array of parameters for $where
- * @return array An array containing information about the posts
- */
 function list_getIPMessages($start, $items_per_page, $sort, $where, $where_vars = array())
 {
-	global $smcFunc, $scripturl;
+	global $smcFunc, $txt, $scripturl;
 
 	// Get all the messages fitting this where clause.
-	// @todo SLOW This query is using a filesort.
+	// !!!SLOW This query is using a filesort.
 	$request = $smcFunc['db_query']('', '
 		SELECT
-			m.id_msg, m.poster_ip, COALESCE(mem.real_name, m.poster_name) AS display_name, mem.id_member,
+			m.id_msg, m.poster_ip, IFNULL(mem.real_name, m.poster_name) AS display_name, mem.id_member,
 			m.subject, m.poster_time, m.id_topic, m.id_board
 		FROM {db_prefix}messages AS m
 			INNER JOIN {db_prefix}boards AS b ON (b.id_board = m.id_board)
 			LEFT JOIN {db_prefix}members AS mem ON (mem.id_member = m.id_member)
 		WHERE {query_see_board} AND ' . $where . '
-		ORDER BY {raw:sort}
-		LIMIT {int:start}, {int:max}',
+		ORDER BY ' . $sort . '
+		LIMIT ' . $start . ', ' . $items_per_page,
 		array_merge($where_vars, array(
-			'sort' => $sort,
-			'start' => $start,
-			'max' => $items_per_page,
 		))
 	);
 	$messages = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 		$messages[] = array(
-			'ip' => inet_dtop($row['poster_ip']),
+			'ip' => $row['poster_ip'],
 			'member_link' => empty($row['id_member']) ? $row['display_name'] : '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['display_name'] . '</a>',
 			'board' => array(
 				'id' => $row['id_board'],
@@ -1851,11 +1205,6 @@ function list_getIPMessages($start, $items_per_page, $sort, $where, $where_vars 
 	return $messages;
 }
 
-/**
- * Handles tracking a particular IP address
- *
- * @param int $memID The ID of a member whose IP we want to track
- */
 function TrackIP($memID = 0)
 {
 	global $user_profile, $scripturl, $txt, $user_info, $modSettings, $sourcedir;
@@ -1883,14 +1232,11 @@ function TrackIP($memID = 0)
 	if (isset($_REQUEST['searchip']))
 		$context['ip'] = trim($_REQUEST['searchip']);
 
-	if (isValidIP($context['ip']) === false)
+	if (preg_match('/^\d{1,3}\.(\d{1,3}|\*)\.(\d{1,3}|\*)\.(\d{1,3}|\*)$/', $context['ip']) == 0)
 		fatal_lang_error('invalid_tracking_ip', false);
 
-	//mysql didn't support like search with varbinary
-	//$ip_var = str_replace('*', '%', $context['ip']);
-	//$ip_string = strpos($ip_var, '%') === false ? '= {inet:ip_address}' : 'LIKE {string:ip_address}';
-	$ip_var = $context['ip'];
-	$ip_string = '= {inet:ip_address}';
+	$ip_var = str_replace('*', '%', $context['ip']);
+	$ip_string = strpos($ip_var, '%') === false ? '= {string:ip_address}' : 'LIKE {string:ip_address}';
 
 	if (empty($context['tracking_area']))
 		$context['page_title'] = $txt['trackIP'] . ' - ' . $context['ip'];
@@ -1905,13 +1251,10 @@ function TrackIP($memID = 0)
 	);
 	$context['ips'] = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
-		$context['ips'][inet_dtop($row['member_ip'])][] = '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['display_name'] . '</a>';
+		$context['ips'][$row['member_ip']][] = '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member'] . '">' . $row['display_name'] . '</a>';
 	$smcFunc['db_free_result']($request);
 
 	ksort($context['ips']);
-
-	// For messages we use the "messages per page" option
-	$maxPerPage = empty($modSettings['disableCustomPerPage']) && !empty($options['messages_per_page']) ? $options['messages_per_page'] : $modSettings['defaultMaxMessages'];
 
 	// Gonna want this for the list.
 	require_once($sourcedir . '/Subs-List.php');
@@ -1921,7 +1264,7 @@ function TrackIP($memID = 0)
 		'id' => 'track_message_list',
 		'title' => $txt['messages_from_ip'] . ' ' . $context['ip'],
 		'start_var_name' => 'messageStart',
-		'items_per_page' => $maxPerPage,
+		'items_per_page' => $modSettings['defaultMaxMessages'],
 		'no_items_label' => $txt['no_messages_from_ip'],
 		'base_href' => $context['base_url'] . ';searchip=' . $context['ip'],
 		'default_sort_col' => 'date',
@@ -1953,8 +1296,8 @@ function TrackIP($memID = 0)
 					),
 				),
 				'sort' => array(
-					'default' => 'm.poster_ip',
-					'reverse' => 'm.poster_ip DESC',
+					'default' => 'INET_ATON(m.poster_ip)',
+					'reverse' => 'INET_ATON(m.poster_ip) DESC',
 				),
 			),
 			'poster' => array(
@@ -1997,6 +1340,8 @@ function TrackIP($memID = 0)
 			array(
 				'position' => 'after_title',
 				'value' => $txt['messages_from_ip_desc'],
+				'class' => 'smalltext',
+				'style' => 'padding: 2ex;',
 			),
 		),
 	);
@@ -2009,7 +1354,7 @@ function TrackIP($memID = 0)
 		'id' => 'track_user_list',
 		'title' => $txt['errors_from_ip'] . ' ' . $context['ip'],
 		'start_var_name' => 'errorStart',
-		'items_per_page' => $modSettings['defaultMaxListItems'],
+		'items_per_page' => $modSettings['defaultMaxMessages'],
 		'no_items_label' => $txt['no_errors_from_ip'],
 		'base_href' => $context['base_url'] . ';searchip=' . $context['ip'],
 		'default_sort_col' => 'date2',
@@ -2041,8 +1386,8 @@ function TrackIP($memID = 0)
 					),
 				),
 				'sort' => array(
-					'default' => 'le.ip',
-					'reverse' => 'le.ip DESC',
+					'default' => 'INET_ATON(le.ip)',
+					'reverse' => 'INET_ATON(le.ip) DESC',
 				),
 			),
 			'display_name' => array(
@@ -2059,7 +1404,7 @@ function TrackIP($memID = 0)
 				),
 				'data' => array(
 					'sprintf' => array(
-						'format' => '%1$s<br><a href="%2$s">%2$s</a>',
+						'format' => '%1$s<br /><a href="%2$s">%2$s</a>',
 						'params' => array(
 							'message' => false,
 							'url' => false,
@@ -2084,16 +1429,14 @@ function TrackIP($memID = 0)
 			array(
 				'position' => 'after_title',
 				'value' => $txt['errors_from_ip_desc'],
+				'class' => 'smalltext',
+				'style' => 'padding: 2ex;',
 			),
 		),
 	);
 
 	// Create the error list.
 	createList($listOptions);
-
-	// Allow 3rd party integrations to add in their own lists or whatever.
-	$context['additional_track_lists'] = array();
-	call_integration_hook('integrate_profile_trackip', array($ip_string, $ip_var));
 
 	$context['single_ip'] = strpos($context['ip'], '*') === false;
 	if ($context['single_ip'])
@@ -2140,147 +1483,6 @@ function TrackIP($memID = 0)
 	}
 }
 
-/**
- * Tracks a user's logins.
- *
- * @param int $memID The ID of the member
- */
-function TrackLogins($memID = 0)
-{
-	global $scripturl, $txt, $sourcedir, $context;
-
-	// Gonna want this for the list.
-	require_once($sourcedir . '/Subs-List.php');
-
-	if ($memID == 0)
-		$context['base_url'] = $scripturl . '?action=trackip';
-	else
-		$context['base_url'] = $scripturl . '?action=profile;area=tracking;sa=ip;u=' . $memID;
-
-	// Start with the user messages.
-	$listOptions = array(
-		'id' => 'track_logins_list',
-		'title' => $txt['trackLogins'],
-		'no_items_label' => $txt['trackLogins_none_found'],
-		'base_href' => $context['base_url'],
-		'get_items' => array(
-			'function' => 'list_getLogins',
-			'params' => array(
-				'id_member = {int:current_member}',
-				array('current_member' => $memID),
-			),
-		),
-		'get_count' => array(
-			'function' => 'list_getLoginCount',
-			'params' => array(
-				'id_member = {int:current_member}',
-				array('current_member' => $memID),
-			),
-		),
-		'columns' => array(
-			'time' => array(
-				'header' => array(
-					'value' => $txt['date'],
-				),
-				'data' => array(
-					'db' => 'time',
-				),
-			),
-			'ip' => array(
-				'header' => array(
-					'value' => $txt['ip_address'],
-				),
-				'data' => array(
-					'sprintf' => array(
-						'format' => '<a href="' . $context['base_url'] . ';searchip=%1$s">%1$s</a> (<a href="' . $context['base_url'] . ';searchip=%2$s">%2$s</a>) ',
-						'params' => array(
-							'ip' => false,
-							'ip2' => false
-						),
-					),
-				),
-			),
-		),
-		'additional_rows' => array(
-			array(
-				'position' => 'after_title',
-				'value' => $txt['trackLogins_desc'],
-			),
-		),
-	);
-
-	// Create the messages list.
-	createList($listOptions);
-
-	$context['sub_template'] = 'show_list';
-	$context['default_list'] = 'track_logins_list';
-}
-
-/**
- * Finds the total number of tracked logins for a particular user
- *
- * @param string $where A query to limit which logins are counted
- * @param array $where_vars An array of parameters for $where
- * @return int count of messages matching the IP
- */
-function list_getLoginCount($where, $where_vars = array())
-{
-	global $smcFunc;
-
-	$request = $smcFunc['db_query']('', '
-		SELECT COUNT(*) AS message_count
-		FROM {db_prefix}member_logins
-		WHERE id_member = {int:id_member}',
-		array(
-			'id_member' => $where_vars['current_member'],
-		)
-	);
-	list ($count) = $smcFunc['db_fetch_row']($request);
-	$smcFunc['db_free_result']($request);
-
-	return (int) $count;
-}
-
-/**
- * Callback for the list in trackLogins.
- *
- * @param int $start Which item to start with (not used here)
- * @param int $items_per_page How many items to show on each page (not used here)
- * @param string $sort A string indicating
- * @param string $where A query to filter results (not used here)
- * @param array $where_vars An array of parameters for $where. Only 'current_member' (the ID of the member) is used here
- * @return array An array of information about user logins
- */
-function list_getLogins($start, $items_per_page, $sort, $where, $where_vars = array())
-{
-	global $smcFunc;
-
-	$request = $smcFunc['db_query']('', '
-		SELECT time, ip, ip2
-		FROM {db_prefix}member_logins
-		WHERE id_member = {int:id_member}
-		ORDER BY time DESC',
-		array(
-			'id_member' => $where_vars['current_member'],
-		)
-	);
-	$logins = array();
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-		$logins[] = array(
-			'time' => timeformat($row['time']),
-			'ip' => inet_dtop($row['ip']),
-			'ip2' => inet_dtop($row['ip2']),
-		);
-	$smcFunc['db_free_result']($request);
-
-	return $logins;
-}
-
-/**
- * Tracks a user's profile edits
- *
- * @param int $memID The ID of the member
- */
 function trackEdits($memID)
 {
 	global $scripturl, $txt, $modSettings, $sourcedir, $context, $smcFunc;
@@ -2306,7 +1508,7 @@ function trackEdits($memID)
 	$listOptions = array(
 		'id' => 'edit_list',
 		'title' => $txt['trackEdits'],
-		'items_per_page' => $modSettings['defaultMaxListItems'],
+		'items_per_page' => $modSettings['defaultMaxMessages'],
 		'no_items_label' => $txt['trackEdit_no_edits'],
 		'base_href' => $scripturl . '?action=profile;area=tracking;sa=edits;u=' . $memID,
 		'default_sort_col' => 'time',
@@ -2377,12 +1579,7 @@ function trackEdits($memID)
 	$context['default_list'] = 'edit_list';
 }
 
-/**
- * How many edits?
- *
- * @param int $memID The ID of the member
- * @return int The number of profile edits
- */
+// How many edits?
 function list_getProfileEditCount($memID)
 {
 	global $smcFunc;
@@ -2400,18 +1597,9 @@ function list_getProfileEditCount($memID)
 	list ($edit_count) = $smcFunc['db_fetch_row']($request);
 	$smcFunc['db_free_result']($request);
 
-	return (int) $edit_count;
+	return $edit_count;
 }
 
-/**
- * Loads up information about a user's profile edits. Callback for the list in trackEdits()
- *
- * @param int $start Which item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param int $memID The ID of the member
- * @return array An array of information about the profile edits
- */
 function list_getProfileEdits($start, $items_per_page, $sort, $memID)
 {
 	global $smcFunc, $txt, $scripturl, $context;
@@ -2423,21 +1611,18 @@ function list_getProfileEdits($start, $items_per_page, $sort, $memID)
 		FROM {db_prefix}log_actions
 		WHERE id_log = {int:log_type}
 			AND id_member = {int:owner}
-		ORDER BY {raw:sort}
-		LIMIT {int:start}, {int:max}',
+		ORDER BY ' . $sort . '
+		LIMIT ' . $start . ', ' . $items_per_page,
 		array(
 			'log_type' => 2,
 			'owner' => $memID,
-			'sort' => $sort,
-			'start' => $start,
-			'max' => $items_per_page,
 		)
 	);
 	$edits = array();
 	$members = array();
 	while ($row = $smcFunc['db_fetch_assoc']($request))
 	{
-		$extra = smf_json_decode($row['extra'], true);
+		$extra = safe_unserialize($row['extra']);
 		if (!empty($extra['applicator']))
 			$members[] = $extra['applicator'];
 
@@ -2457,7 +1642,7 @@ function list_getProfileEdits($start, $items_per_page, $sort, $memID)
 
 		$edits[] = array(
 			'id' => $row['id_action'],
-			'ip' => inet_dtop($row['ip']),
+			'ip' => $row['ip'],
 			'id_member' => !empty($extra['applicator']) ? $extra['applicator'] : 0,
 			'member_link' => $txt['trackEdit_deleted_member'],
 			'action' => $row['action'],
@@ -2494,181 +1679,10 @@ function list_getProfileEdits($start, $items_per_page, $sort, $memID)
 	return $edits;
 }
 
-/**
- * Display the history of group requests made by the user whose profile we are viewing.
- *
- * @param int $memID The ID of the member
- */
-function trackGroupReq($memID)
-{
-	global $scripturl, $txt, $modSettings, $sourcedir, $context;
-
-	require_once($sourcedir . '/Subs-List.php');
-
-	// Set the options for the error lists.
-	$listOptions = array(
-		'id' => 'request_list',
-		'title' => sprintf($txt['trackGroupRequests_title'], $context['member']['name']),
-		'items_per_page' => $modSettings['defaultMaxListItems'],
-		'no_items_label' => $txt['requested_none'],
-		'base_href' => $scripturl . '?action=profile;area=tracking;sa=groupreq;u=' . $memID,
-		'default_sort_col' => 'time_applied',
-		'get_items' => array(
-			'function' => 'list_getGroupRequests',
-			'params' => array(
-				$memID,
-			),
-		),
-		'get_count' => array(
-			'function' => 'list_getGroupRequestsCount',
-			'params' => array(
-				$memID,
-			),
-		),
-		'columns' => array(
-			'group' => array(
-				'header' => array(
-					'value' => $txt['requested_group'],
-				),
-				'data' => array(
-					'db' => 'group_name',
-				),
-			),
-			'group_reason' => array(
-				'header' => array(
-					'value' => $txt['requested_group_reason'],
-				),
-				'data' => array(
-					'db' => 'group_reason',
-				),
-			),
-			'time_applied' => array(
-				'header' => array(
-					'value' => $txt['requested_group_time'],
-				),
-				'data' => array(
-					'db' => 'time_applied',
-					'timeformat' => true,
-				),
-				'sort' => array(
-					'default' => 'time_applied DESC',
-					'reverse' => 'time_applied',
-				),
-			),
-			'outcome' => array(
-				'header' => array(
-					'value' => $txt['requested_group_outcome'],
-				),
-				'data' => array(
-					'db' => 'outcome',
-				),
-			),
-		),
-	);
-
-	// Create the error list.
-	createList($listOptions);
-
-	$context['sub_template'] = 'show_list';
-	$context['default_list'] = 'request_list';
-}
-
-/**
- * How many edits?
- *
- * @param int $memID The ID of the member
- * @return int The number of profile edits
- */
-function list_getGroupRequestsCount($memID)
-{
-	global $smcFunc, $user_info;
-
-	$request = $smcFunc['db_query']('', '
-		SELECT COUNT(*) AS req_count
-		FROM {db_prefix}log_group_requests AS lgr
-		WHERE id_member = {int:memID}
-			AND ' . ($user_info['mod_cache']['gq'] == '1=1' ? $user_info['mod_cache']['gq'] : 'lgr.' . $user_info['mod_cache']['gq']),
-		array(
-			'memID' => $memID,
-		)
-	);
-	list ($report_count) = $smcFunc['db_fetch_row']($request);
-	$smcFunc['db_free_result']($request);
-
-	return (int) $report_count;
-}
-
-/**
- * Loads up information about a user's group requests. Callback for the list in trackGroupReq()
- *
- * @param int $start Which item to start with (for pagination purposes)
- * @param int $items_per_page How many items to show on each page
- * @param string $sort A string indicating how to sort the results
- * @param int $memID The ID of the member
- * @return array An array of information about the user's group requests
- */
-function list_getGroupRequests($start, $items_per_page, $sort, $memID)
-{
-	global $smcFunc, $txt, $scripturl, $user_info;
-
-	$groupreq = array();
-
-	$request = $smcFunc['db_query']('', '
-		SELECT
-			lgr.id_group, mg.group_name, mg.online_color, lgr.time_applied, lgr.reason, lgr.status,
-			ma.id_member AS id_member_acted, COALESCE(ma.member_name, lgr.member_name_acted) AS act_name, lgr.time_acted, lgr.act_reason
-		FROM {db_prefix}log_group_requests AS lgr
-			LEFT JOIN {db_prefix}members AS ma ON (lgr.id_member_acted = ma.id_member)
-			INNER JOIN {db_prefix}membergroups AS mg ON (lgr.id_group = mg.id_group)
-		WHERE lgr.id_member = {int:memID}
-			AND ' . ($user_info['mod_cache']['gq'] == '1=1' ? $user_info['mod_cache']['gq'] : 'lgr.' . $user_info['mod_cache']['gq']) . '
-		ORDER BY {raw:sort}
-		LIMIT {int:start}, {int:max}',
-		array(
-			'memID' => $memID,
-			'sort' => $sort,
-			'start' => $start,
-			'max' => $items_per_page,
-		)
-	);
-	while ($row = $smcFunc['db_fetch_assoc']($request))
-	{
-		$this_req = array(
-			'group_name' => empty($row['online_color']) ? $row['group_name'] : '<span style="color:' . $row['online_color'] . '">' . $row['group_name'] . '</span>',
-			'group_reason' => $row['reason'],
-			'time_applied' => $row['time_applied'],
-		);
-		switch ($row['status'])
-		{
-			case 0:
-				$this_req['outcome'] = $txt['outcome_pending'];
-				break;
-			case 1:
-				$member_link = empty($row['id_member_acted']) ? $row['act_name'] : '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member_acted'] . '">' . $row['act_name'] . '</a>';
-				$this_req['outcome'] = sprintf($txt['outcome_approved'], $member_link, timeformat($row['time_acted']));
-				break;
-			case 2:
-				$member_link = empty($row['id_member_acted']) ? $row['act_name'] : '<a href="' . $scripturl . '?action=profile;u=' . $row['id_member_acted'] . '">' . $row['act_name'] . '</a>';
-				$this_req['outcome'] = sprintf(!empty($row['act_reason']) ? $txt['outcome_refused_reason'] : $txt['outcome_refused'], $member_link, timeformat($row['time_acted']), $row['act_reason']);
-				break;
-		}
-
-		$groupreq[] = $this_req;
-	}
-	$smcFunc['db_free_result']($request);
-
-	return $groupreq;
-}
-
-/**
- * Shows which permissions a user has
- *
- * @param int $memID The ID of the member
- */
 function showPermissions($memID)
 {
-	global $txt, $board;
-	global $user_profile, $context, $sourcedir, $smcFunc;
+	global $scripturl, $txt, $board, $modSettings;
+	global $user_profile, $context, $user_info, $sourcedir, $smcFunc;
 
 	// Verify if the user has sufficient permissions.
 	isAllowedTo('manage_permissions');
@@ -2698,14 +1712,12 @@ function showPermissions($memID)
 
 	// Load a list of boards for the jump box - except the defaults.
 	$request = $smcFunc['db_query']('order_by_board_order', '
-		SELECT b.id_board, b.name, b.id_profile, b.member_groups, COALESCE(mods.id_member, modgs.id_group, 0) AS is_mod
+		SELECT b.id_board, b.name, b.id_profile, b.member_groups, IFNULL(mods.id_member, 0) AS is_mod
 		FROM {db_prefix}boards AS b
 			LEFT JOIN {db_prefix}moderators AS mods ON (mods.id_board = b.id_board AND mods.id_member = {int:current_member})
-			LEFT JOIN {db_prefix}moderator_groups AS modgs ON (modgs.id_board = b.id_board AND modgs.id_group IN ({array_int:current_groups}))
 		WHERE {query_see_board}',
 		array(
 			'current_member' => $memID,
-			'current_groups' => $curGroups,
 		)
 	);
 	$context['boards'] = array();
@@ -2728,9 +1740,6 @@ function showPermissions($memID)
 			);
 	}
 	$smcFunc['db_free_result']($request);
-
-	require_once($sourcedir . '/Subs-Boards.php');
-	sortBoards($context['boards']);
 
 	if (!empty($context['no_access_boards']))
 		$context['no_access_boards'][count($context['no_access_boards']) - 1]['is_last'] = true;
@@ -2798,15 +1807,14 @@ function showPermissions($memID)
 	$request = $smcFunc['db_query']('', '
 		SELECT
 			bp.add_deny, bp.permission, bp.id_group, mg.group_name' . (empty($board) ? '' : ',
-			b.id_profile, CASE WHEN (mods.id_member IS NULL AND modgs.id_group IS NULL) THEN 0 ELSE 1 END AS is_moderator') . '
+			b.id_profile, CASE WHEN mods.id_member IS NULL THEN 0 ELSE 1 END AS is_moderator') . '
 		FROM {db_prefix}board_permissions AS bp' . (empty($board) ? '' : '
 			INNER JOIN {db_prefix}boards AS b ON (b.id_board = {int:current_board})
-			LEFT JOIN {db_prefix}moderators AS mods ON (mods.id_board = b.id_board AND mods.id_member = {int:current_member})
-			LEFT JOIN {db_prefix}moderator_groups AS modgs ON (modgs.id_board = b.id_board AND modgs.id_group IN ({array_int:group_list}))') . '
+			LEFT JOIN {db_prefix}moderators AS mods ON (mods.id_board = b.id_board AND mods.id_member = {int:current_member})') . '
 			LEFT JOIN {db_prefix}membergroups AS mg ON (mg.id_group = bp.id_group)
 		WHERE bp.id_profile = {raw:current_profile}
 			AND bp.id_group IN ({array_int:group_list}' . (empty($board) ? ')' : ', {int:moderator_group})
-			AND (mods.id_member IS NOT NULL OR modgs.id_group IS NOT NULL OR bp.id_group != {int:moderator_group})'),
+			AND (mods.id_member IS NOT NULL OR bp.id_group != {int:moderator_group})'),
 		array(
 			'current_board' => $board,
 			'group_list' => $curGroups,
@@ -2848,17 +1856,13 @@ function showPermissions($memID)
 	$smcFunc['db_free_result']($request);
 }
 
-/**
- * View a member's warnings
- *
- * @param int $memID The ID of the member
- */
+// View a members warnings?
 function viewWarning($memID)
 {
 	global $modSettings, $context, $sourcedir, $txt, $scripturl;
 
 	// Firstly, can we actually even be here?
-	if (!($context['user']['is_owner'] && allowedTo('view_warning_own')) && !allowedTo('view_warning_any') && !allowedTo('issue_warning') && !allowedTo('moderate_forum'))
+	if (!allowedTo('issue_warning') && (empty($modSettings['warning_show']) || ($modSettings['warning_show'] == 1 && !$context['user']['is_owner'])))
 		fatal_lang_error('no_access', false);
 
 	// Make sure things which are disabled stay disabled.
@@ -2873,7 +1877,7 @@ function viewWarning($memID)
 	$listOptions = array(
 		'id' => 'view_warnings',
 		'title' => $txt['profile_viewwarning_previous_warnings'],
-		'items_per_page' => $modSettings['defaultMaxListItems'],
+		'items_per_page' => $modSettings['defaultMaxMessages'],
 		'no_items_label' => $txt['profile_viewwarning_no_warnings'],
 		'base_href' => $scripturl . '?action=profile;area=viewwarning;sa=user;u=' . $memID,
 		'default_sort_col' => 'log_time',
@@ -2905,7 +1909,7 @@ function viewWarning($memID)
 			'reason' => array(
 				'header' => array(
 					'value' => $txt['profile_warning_previous_reason'],
-					'style' => 'width: 50%;',
+					'style' => 'width: 50%',
 				),
 				'data' => array(
 					'db' => 'reason',
@@ -2950,3 +1954,5 @@ function viewWarning($memID)
 		if ($context['member']['warning'] >= $limit)
 			$context['current_level'] = $limit;
 }
+
+?>

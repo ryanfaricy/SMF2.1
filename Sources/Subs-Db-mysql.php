@@ -1,93 +1,74 @@
 <?php
 
 /**
- * This file has all the main functions in it that relate to the database.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0.9
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- *  Maps the implementations in this file (smf_db_function_name)
- *  to the $smcFunc['db_function_name'] variable.
- *
- * @param string $db_server The database server
- * @param string $db_name The name of the database
- * @param string $db_user The database username
- * @param string $db_passwd The database password
- * @param string $db_prefix The table prefix
- * @param array $db_options An array of database options
- * @return null|resource Returns null on failure if $db_options['non_fatal'] is true or a MySQL connection resource handle if the connection was successful.
- */
+/*	This file has all the main functions in it that relate to the database.
+
+	smf_db_initiate() maps the implementations in this file (smf_db_function_name)
+	to the $smcFunc['db_function_name'] variable.
+
+*/
+
+// Initialize the database settings
 function smf_db_initiate($db_server, $db_name, $db_user, $db_passwd, $db_prefix, $db_options = array())
 {
 	global $smcFunc, $mysql_set_mode;
 
 	// Map some database specific functions, only do this once.
-	if (!isset($smcFunc['db_fetch_assoc']))
+	if (!isset($smcFunc['db_fetch_assoc']) || $smcFunc['db_fetch_assoc'] != 'mysql_fetch_assoc')
 		$smcFunc += array(
-			'db_query'                  => 'smf_db_query',
-			'db_quote'                  => 'smf_db_quote',
-			'db_fetch_assoc'            => 'mysqli_fetch_assoc',
-			'db_fetch_row'              => 'mysqli_fetch_row',
-			'db_free_result'            => 'mysqli_free_result',
-			'db_insert'                 => 'smf_db_insert',
-			'db_insert_id'              => 'smf_db_insert_id',
-			'db_num_rows'               => 'mysqli_num_rows',
-			'db_data_seek'              => 'mysqli_data_seek',
-			'db_num_fields'             => 'mysqli_num_fields',
-			'db_escape_string'          => 'addslashes',
-			'db_unescape_string'        => 'stripslashes',
-			'db_server_info'            => 'smf_db_get_server_info',
-			'db_affected_rows'          => 'smf_db_affected_rows',
-			'db_transaction'            => 'smf_db_transaction',
-			'db_error'                  => 'mysqli_error',
-			'db_select_db'              => 'smf_db_select',
-			'db_title'                  => 'MySQLi',
-			'db_sybase'                 => false,
-			'db_case_sensitive'         => false,
+			'db_query' => 'smf_db_query',
+			'db_quote' => 'smf_db_quote',
+			'db_fetch_assoc' => 'mysql_fetch_assoc',
+			'db_fetch_row' => 'mysql_fetch_row',
+			'db_free_result' => 'mysql_free_result',
+			'db_insert' => 'smf_db_insert',
+			'db_insert_id' => 'smf_db_insert_id',
+			'db_num_rows' => 'mysql_num_rows',
+			'db_data_seek' => 'mysql_data_seek',
+			'db_num_fields' => 'mysql_num_fields',
+			'db_escape_string' => 'addslashes',
+			'db_unescape_string' => 'stripslashes',
+			'db_server_info' => 'mysql_get_server_info',
+			'db_affected_rows' => 'smf_db_affected_rows',
+			'db_transaction' => 'smf_db_transaction',
+			'db_error' => 'mysql_error',
+			'db_select_db' => 'mysql_select_db',
+			'db_title' => 'MySQL',
+			'db_sybase' => false,
+			'db_case_sensitive' => false,
 			'db_escape_wildcard_string' => 'smf_db_escape_wildcard_string',
-			'db_is_resource'            => 'smf_is_resource',
-			'db_mb4'                    => false,
 		);
 
 	if (!empty($db_options['persist']))
-		$db_server = 'p:' . $db_server;
-
-	$connection = mysqli_init();
-	
-	$flags = MYSQLI_CLIENT_FOUND_ROWS;
-	
-	$success = false;
-	
-	if ($connection) {
-		if (!empty($db_options['port']))
-			$success = mysqli_real_connect($connection, $db_server, $db_user, $db_passwd, '', $db_options['port'], null, $flags);
-		else
-			$success = mysqli_real_connect($connection, $db_server, $db_user, $db_passwd, '', 0, null, $flags);
-	}
+		$connection = @mysql_pconnect($db_server, $db_user, $db_passwd);
+	else
+		$connection = @mysql_connect($db_server, $db_user, $db_passwd);
 
 	// Something's wrong, show an error if its fatal (which we assume it is)
-	if ($success === false)
+	if (!$connection)
 	{
 		if (!empty($db_options['non_fatal']))
 			return null;
 		else
-			display_db_error();
+			db_fatal_error();
 	}
 
 	// Select the database, unless told not to
-	if (empty($db_options['dont_select_db']) && !@mysqli_select_db($connection, $db_name) && empty($db_options['non_fatal']))
-		display_db_error();
+	if (empty($db_options['dont_select_db']) && !@mysql_select_db($db_name, $connection) && empty($db_options['non_fatal']))
+		db_fatal_error();
 
 	// This makes it possible to have SMF automatically change the sql_mode and autocommit if needed.
 	if (isset($mysql_set_mode) && $mysql_set_mode === true)
@@ -99,74 +80,30 @@ function smf_db_initiate($db_server, $db_name, $db_user, $db_passwd, $db_prefix,
 	return $connection;
 }
 
-/**
- * Extend the database functionality. It calls the respective file's init
- * to add the implementations in that file to $smcFunc array.
- *
- * @param string $type Indicates which additional file to load. ('extra', 'packages')
- */
+// Extend the database functionality.
 function db_extend($type = 'extra')
 {
-	global $sourcedir;
+	global $sourcedir, $db_type;
 
-	// we force the MySQL files as nothing syntactically changes with MySQLi
-	require_once($sourcedir . '/Db' . strtoupper($type[0]) . substr($type, 1) . '-mysql.php');
+	require_once($sourcedir . '/Db' . strtoupper($type[0]) . substr($type, 1) . '-' . $db_type . '.php');
 	$initFunc = 'db_' . $type . '_init';
 	$initFunc();
 }
 
-/**
- * Fix up the prefix so it doesn't require the database to be selected.
- *
- * @param string &$db_prefix The table prefix
- * @param string $db_name The database name
- */
+// Fix up the prefix so it doesn't require the database to be selected.
 function db_fix_prefix(&$db_prefix, $db_name)
 {
 	$db_prefix = is_numeric(substr($db_prefix, 0, 1)) ? $db_name . '.' . $db_prefix : '`' . $db_name . '`.' . $db_prefix;
 }
 
-/**
- * Wrap mysqli_select_db so the connection does not need to be specified
- *
- * @param string &$database The database
- * @param object $connection The connection object (if null, $db_connection is used)
- * @return bool Whether the database was selected
- */
-function smf_db_select($database, $connection = null)
-{
-	global $db_connection;
-	return mysqli_select_db($connection === null ? $db_connection : $connection, $database);
-}
-
-/**
- * Wrap mysqli_get_server_info so the connection does not need to be specified
- *
- * @param object $connection The connection to use (if null, $db_connection is used)
- * @return string The server info
- */
-function smf_db_get_server_info($connection = null)
-{
-	global $db_connection;
-	return mysqli_get_server_info($connection === null ? $db_connection : $connection);
-}
-
-/**
- * Callback for preg_replace_callback on the query.
- * It allows to replace on the fly a few pre-defined strings, for convenience ('query_see_board', 'query_wanna_see_board'), with
- * their current values from $user_info.
- * In addition, it performs checks and sanitization on the values sent to the database.
- *
- * @param array $matches The matches from preg_replace_callback
- * @return string The appropriate string depending on $matches[1]
- */
 function smf_db_replacement__callback($matches)
 {
-	global $db_callback, $user_info, $db_prefix, $smcFunc;
+	global $db_callback, $user_info, $db_prefix;
 
 	list ($values, $connection) = $db_callback;
-	if (!is_object($connection))
-		display_db_error();
+
+	if (!is_resource($connection))
+		db_fatal_error();
 
 	if ($matches[1] === 'db_prefix')
 		return $db_prefix;
@@ -177,17 +114,11 @@ function smf_db_replacement__callback($matches)
 	if ($matches[1] === 'query_wanna_see_board')
 		return $user_info['query_wanna_see_board'];
 
-	if ($matches[1] === 'empty')
-		return '\'\'';
-
 	if (!isset($matches[2]))
 		smf_db_error_backtrace('Invalid value inserted or no type specified.', '', E_USER_ERROR, __FILE__, __LINE__);
 
-	if ($matches[1] === 'literal')
-		return '\'' . mysqli_real_escape_string($connection, $matches[2]) . '\'';
-
 	if (!isset($values[$matches[2]]))
-		smf_db_error_backtrace('The database value you\'re trying to insert does not exist: ' . (isset($smcFunc['htmlspecialchars']) ? $smcFunc['htmlspecialchars']($matches[2]) : htmlspecialchars($matches[2])), '', E_USER_ERROR, __FILE__, __LINE__);
+		smf_db_error_backtrace('The database value you\'re trying to insert does not exist: ' . htmlspecialchars($matches[2]), '', E_USER_ERROR, __FILE__, __LINE__);
 
 	$replacement = $values[$matches[2]];
 
@@ -201,7 +132,7 @@ function smf_db_replacement__callback($matches)
 
 		case 'string':
 		case 'text':
-			return sprintf('\'%1$s\'', mysqli_real_escape_string($connection, $replacement));
+			return sprintf('\'%1$s\'', mysql_real_escape_string($replacement, $connection));
 		break;
 
 		case 'array_int':
@@ -232,7 +163,7 @@ function smf_db_replacement__callback($matches)
 					smf_db_error_backtrace('Database error, given array of string values is empty. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
 
 				foreach ($replacement as $key => $value)
-					$replacement[$key] = sprintf('\'%1$s\'', mysqli_real_escape_string($connection, $value));
+					$replacement[$key] = sprintf('\'%1$s\'', mysql_real_escape_string($value, $connection));
 
 				return implode(', ', $replacement);
 			}
@@ -245,22 +176,6 @@ function smf_db_replacement__callback($matches)
 				return sprintf('\'%04d-%02d-%02d\'', $date_matches[1], $date_matches[2], $date_matches[3]);
 			else
 				smf_db_error_backtrace('Wrong value type sent to the database. Date expected. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-		break;
-
-		case 'time':
-			if (preg_match('~^([0-1]?\d|2[0-3]):([0-5]\d):([0-5]\d)$~', $replacement, $time_matches) === 1)
-				return sprintf('\'%02d:%02d:%02d\'', $time_matches[1], $time_matches[2], $time_matches[3]);
-			else
-				smf_db_error_backtrace('Wrong value type sent to the database. Time expected. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-		break;
-		
-		case 'datetime':
-			if (preg_match('~^(\d{4})-([0-1]?\d)-([0-3]?\d) ([0-1]?\d|2[0-3]):([0-5]\d):([0-5]\d)$~', $replacement, $datetime_matches) === 1)
-				return 'str_to_date('.
-					sprintf('\'%04d-%02d-%02d %02d:%02d:%02d\'', $datetime_matches[1], $datetime_matches[2], $datetime_matches[3], $datetime_matches[4], $datetime_matches[5] ,$datetime_matches[6]).
-					',\'%Y-%m-%d %h:%i:%s\')';
-			else
-				smf_db_error_backtrace('Wrong value type sent to the database. Datetime expected. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
 		break;
 
 		case 'float':
@@ -278,49 +193,13 @@ function smf_db_replacement__callback($matches)
 			return $replacement;
 		break;
 
-		case 'inet':
-			if ($replacement == 'null' || $replacement == '')
-				return 'null';
-			if (!isValidIP($replacement))
-				smf_db_error_backtrace('Wrong value type sent to the database. IPv4 or IPv6 expected.(' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-			//we don't use the native support of mysql > 5.6.2
-			return sprintf('unhex(\'%1$s\')', bin2hex(inet_pton($replacement)));
-
-		case 'array_inet':
-			if (is_array($replacement))
-			{
-				if (empty($replacement))
-					smf_db_error_backtrace('Database error, given array of IPv4 or IPv6 values is empty. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-
-				foreach ($replacement as $key => $value)
-				{
-					if ($replacement == 'null' || $replacement == '')
-						$replacement[$key] = 'null';
-					if (!isValidIP($value))
-						smf_db_error_backtrace('Wrong value type sent to the database. IPv4 or IPv6 expected.(' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-					$replacement[$key] = sprintf('unhex(\'%1$s\')', bin2hex(inet_pton($value)));
-				}
-
-				return implode(', ', $replacement);
-			}
-			else
-				smf_db_error_backtrace('Wrong value type sent to the database. Array of IPv4 or IPv6 expected. (' . $matches[2] . ')', '', E_USER_ERROR, __FILE__, __LINE__);
-		break;
-
 		default:
 			smf_db_error_backtrace('Undefined type used in the database query. (' . $matches[1] . ':' . $matches[2] . ')', '', false, __FILE__, __LINE__);
 		break;
 	}
 }
 
-/**
- * Just like the db_query, escape and quote a string, but not executing the query.
- *
- * @param string $db_string The database string
- * @param array $db_values An array of values to be injected into the string
- * @param resource $connection = null The connection to use (null to use $db_connection)
- * @return string The string with the values inserted
- */
+// Just like the db_query, escape and quote a string, but not executing the query.
 function smf_db_quote($db_string, $db_values, $connection = null)
 {
 	global $db_callback, $db_connection;
@@ -329,7 +208,7 @@ function smf_db_quote($db_string, $db_values, $connection = null)
 	if (strpos($db_string, '{') !== false)
 	{
 		// This is needed by the callback function.
-		$db_callback = array($db_values, $connection === null ? $db_connection : $connection);
+		$db_callback = array($db_values, $connection == null ? $db_connection : $connection);
 
 		// Do the quoting and escaping
 		$db_string = preg_replace_callback('~{([a-z_]+)(?::([a-zA-Z0-9_-]+))?}~', 'smf_db_replacement__callback', $db_string);
@@ -341,15 +220,7 @@ function smf_db_quote($db_string, $db_values, $connection = null)
 	return $db_string;
 }
 
-/**
- * Do a query.  Takes care of errors too.
- *
- * @param string $identifier An identifier. Only used in Postgres when we need to do things differently...
- * @param string $db_string The database string
- * @param array $db_values = array() The values to be inserted into the string
- * @param resource $connection = null The connection to use (null to use $db_connection)
- * @return resource|bool Returns a MySQL result resource (for SELECT queries), true (for UPDATE queries) or false if the query failed
- */
+// Do a query.  Takes care of errors too.
 function smf_db_query($identifier, $db_string, $db_values = array(), $connection = null)
 {
 	global $db_cache, $db_count, $db_connection, $db_show_debug, $time_start;
@@ -370,35 +241,29 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 	);
 
 	// Decide which connection to use.
-	$connection = $connection === null ? $db_connection : $connection;
+	$connection = $connection == null ? $db_connection : $connection;
 
-	// Get a connection if we are shutting down, sometimes the link is closed before sessions are written
-	if (!is_object($connection))
-	{
-		global $db_server, $db_user, $db_passwd, $db_name, $db_show_debug, $ssi_db_user, $ssi_db_passwd;
+	// Special queries that need processing.
+	$replacements = array(
+		'alter_table_boards' => array(
+			'~(.+)~' => '',
+		),
+		'boardindex_fetch_boards' => array(
+			'~(.)$~' => '$1 ORDER BY b.board_order',
+		),
+		'messageindex_fetch_boards' => array(
+			'~(.)$~' => '$1 ORDER BY b.board_order',
+		),
+		'order_by_board_order' => array(
+			'~(.)$~' => '$1 ORDER BY b.board_order',
+		),
+	);
 
-		// Are we in SSI mode?  If so try that username and password first
-		if (SMF == 'SSI' && !empty($ssi_db_user) && !empty($ssi_db_passwd))
-		{
-			if (empty($db_persist))
-				$db_connection = @mysqli_connect($db_server, $ssi_db_user, $ssi_db_passwd);
-			else
-				$db_connection = @mysqli_connect('p:' . $db_server, $ssi_db_user, $ssi_db_passwd);
-		}
-		// Fall back to the regular username and password if need be
-		if (!$db_connection)
-		{
-			if (empty($db_persist))
-				$db_connection = @mysqli_connect($db_server, $db_user, $db_passwd);
-			else
-				$db_connection = @mysqli_connect('p:' . $db_server, $db_user, $db_passwd);
-		}
+	if (isset($replacements[$identifier]))
+		$db_string = preg_replace(array_keys($replacements[$identifier]), array_values($replacements[$identifier]), $db_string);
 
-		if (!$db_connection || !@mysqli_select_db($db_connection, $db_name))
-			$db_connection = false;
-
-		$connection = $db_connection;
-	}
+	if (trim($db_string) == '')
+		return false;
 
 	// One more query....
 	$db_count = !isset($db_count) ? 1 : $db_count + 1;
@@ -446,8 +311,8 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 			$_SESSION['debug_redirect'] = array();
 		}
 
-		// Don't overload it.
 		$st = microtime();
+		// Don't overload it.
 		$db_cache[$db_count]['q'] = $db_count < 50 ? $db_string : '...';
 		$db_cache[$db_count]['f'] = $file;
 		$db_cache[$db_count]['l'] = $line;
@@ -473,7 +338,7 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 				$pos2 = strpos($db_string, '\\', $pos + 1);
 				if ($pos1 === false)
 					break;
-				elseif ($pos2 === false || $pos2 > $pos1)
+				elseif ($pos2 == false || $pos2 > $pos1)
 				{
 					$pos = $pos1;
 					break;
@@ -488,13 +353,19 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 		$clean .= substr($db_string, $old_pos);
 		$clean = trim(strtolower(preg_replace($allowed_comments_from, $allowed_comments_to, $clean)));
 
+		// We don't use UNION in SMF, at least so far.  But it's useful for injections.
+		if (strpos($clean, 'union') !== false && preg_match('~(^|[^a-z])union($|[^[a-z])~s', $clean) != 0)
+			$fail = true;
 		// Comments?  We don't use comments in our queries, we leave 'em outside!
-		if (strpos($clean, '/*') > 2 || strpos($clean, '--') !== false || strpos($clean, ';') !== false)
+		elseif (strpos($clean, '/*') > 2 || strpos($clean, '--') !== false || strpos($clean, ';') !== false)
 			$fail = true;
 		// Trying to change passwords, slow us down, or something?
 		elseif (strpos($clean, 'sleep') !== false && preg_match('~(^|[^a-z])sleep($|[^[_a-z])~s', $clean) != 0)
 			$fail = true;
 		elseif (strpos($clean, 'benchmark') !== false && preg_match('~(^|[^a-z])benchmark($|[^[a-z])~s', $clean) != 0)
+			$fail = true;
+		// Sub selects?  We don't use those either.
+		elseif (preg_match('~\([^)]*?select~s', $clean) != 0)
 			$fail = true;
 
 		if (!empty($fail) && function_exists('log_error'))
@@ -502,10 +373,9 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 	}
 
 	if (empty($db_unbuffered))
-		$ret = @mysqli_query($connection, $db_string);
+		$ret = @mysql_query($db_string, $connection);
 	else
-		$ret = @mysqli_query($connection, $db_string, MYSQLI_USE_RESULT);
-
+		$ret = @mysql_unbuffered_query($db_string, $connection);
 	if ($ret === false && empty($db_values['db_error_skip']))
 		$ret = smf_db_error($db_string, $connection);
 
@@ -516,69 +386,46 @@ function smf_db_query($identifier, $db_string, $db_values = array(), $connection
 	return $ret;
 }
 
-/**
- * affected_rows
- * @param resource $connection A connection to use (if null, $db_connection is used)
- * @return int The number of rows affected by the last query
- */
 function smf_db_affected_rows($connection = null)
 {
 	global $db_connection;
 
-	return mysqli_affected_rows($connection === null ? $db_connection : $connection);
+	return mysql_affected_rows($connection == null ? $db_connection : $connection);
 }
 
-/**
- * Gets the ID of the most recently inserted row.
- *
- * @param string $table The table (only used for Postgres)
- * @param string $field = null The specific field (not used here)
- * @param resource $connection = null The connection (if null, $db_connection is used)
- * @return int The ID of the most recently inserted row
- */
 function smf_db_insert_id($table, $field = null, $connection = null)
 {
-	global $db_connection;
+	global $db_connection, $db_prefix;
+
+	$table = str_replace('{db_prefix}', $db_prefix, $table);
 
 	// MySQL doesn't need the table or field information.
-	return mysqli_insert_id($connection === null ? $db_connection : $connection);
+	return mysql_insert_id($connection == null ? $db_connection : $connection);
 }
 
-/**
- * Do a transaction.
- *
- * @param string $type The step to perform (i.e. 'begin', 'commit', 'rollback')
- * @param resource $connection The connection to use (if null, $db_connection is used)
- * @return bool True if successful, false otherwise
- */
+// Do a transaction.
 function smf_db_transaction($type = 'commit', $connection = null)
 {
 	global $db_connection;
 
 	// Decide which connection to use
-	$connection = $connection === null ? $db_connection : $connection;
+	$connection = $connection == null ? $db_connection : $connection;
 
 	if ($type == 'begin')
-		return @mysqli_query($connection, 'BEGIN');
+		return @mysql_query('BEGIN', $connection);
 	elseif ($type == 'rollback')
-		return @mysqli_query($connection, 'ROLLBACK');
+		return @mysql_query('ROLLBACK', $connection);
 	elseif ($type == 'commit')
-		return @mysqli_query($connection, 'COMMIT');
+		return @mysql_query('COMMIT', $connection);
 
 	return false;
 }
 
-/**
- * Database error!
- * Backtrace, log, try to fix.
- *
- * @param string $db_string The DB string
- * @param object $connection The connection to use (if null, $db_connection is used)
- */
+// Database error!
 function smf_db_error($db_string, $connection = null)
 {
 	global $txt, $context, $sourcedir, $webmaster_email, $modSettings;
-	global $db_connection, $db_last_error, $db_persist;
+	global $forum_version, $db_connection, $db_last_error, $db_persist;
 	global $db_server, $db_user, $db_passwd, $db_name, $db_show_debug, $ssi_db_user, $ssi_db_passwd;
 	global $smcFunc;
 
@@ -586,11 +433,11 @@ function smf_db_error($db_string, $connection = null)
 	list ($file, $line) = smf_db_error_backtrace('', '', 'return', __FILE__, __LINE__);
 
 	// Decide which connection to use
-	$connection = $connection === null ? $db_connection : $connection;
+	$connection = $connection == null ? $db_connection : $connection;
 
 	// This is the error message...
-	$query_error = mysqli_error($connection);
-	$query_errno = mysqli_errno($connection);
+	$query_error = mysql_error($connection);
+	$query_errno = mysql_errno($connection);
 
 	// Error numbers:
 	//    1016: Can't open file '....MYI'
@@ -669,7 +516,7 @@ function smf_db_error($db_string, $connection = null)
 					REPAIR TABLE $table", false, false);
 
 			// And send off an email!
-			sendmail($webmaster_email, $txt['database_error'], $txt['tried_to_repair'], null, 'dberror');
+			sendmail($webmaster_email, $txt['database_error'], $txt['tried_to_repair']);
 
 			$modSettings['cache_enable'] = $old_cache;
 
@@ -690,20 +537,20 @@ function smf_db_error($db_string, $connection = null)
 				if (SMF == 'SSI' && !empty($ssi_db_user) && !empty($ssi_db_passwd))
 				{
 					if (empty($db_persist))
-						$db_connection = @mysqli_connect($db_server, $ssi_db_user, $ssi_db_passwd);
+						$db_connection = @mysql_connect($db_server, $ssi_db_user, $ssi_db_passwd);
 					else
-						$db_connection = @mysqli_connect('p:' . $db_server, $ssi_db_user, $ssi_db_passwd);
+						$db_connection = @mysql_pconnect($db_server, $ssi_db_user, $ssi_db_passwd);
 				}
 				// Fall back to the regular username and password if need be
 				if (!$db_connection)
 				{
 					if (empty($db_persist))
-						$db_connection = @mysqli_connect($db_server, $db_user, $db_passwd);
+						$db_connection = @mysql_connect($db_server, $db_user, $db_passwd);
 					else
-						$db_connection = @mysqli_connect('p:' . $db_server, $db_user, $db_passwd);
+						$db_connection = @mysql_pconnect($db_server, $db_user, $db_passwd);
 				}
 
-				if (!$db_connection || !@mysqli_select_db($db_connection, $db_name))
+				if (!$db_connection || !@mysql_select_db($db_name, $db_connection))
 					$db_connection = false;
 			}
 
@@ -714,7 +561,7 @@ function smf_db_error($db_string, $connection = null)
 				{
 					$ret = $smcFunc['db_query']('', $db_string, false, false);
 
-					$new_errno = mysqli_errno($db_connection);
+					$new_errno = mysql_errno($db_connection);
 					if ($ret !== false || in_array($new_errno, array(1205, 1213)))
 						break;
 				}
@@ -746,32 +593,25 @@ function smf_db_error($db_string, $connection = null)
 	// Show an error message, if possible.
 	$context['error_title'] = $txt['database_error'];
 	if (allowedTo('admin_forum'))
-		$context['error_message'] = nl2br($query_error) . '<br>' . $txt['file'] . ': ' . $file . '<br>' . $txt['line'] . ': ' . $line;
+		$context['error_message'] = nl2br($query_error) . '<br />' . $txt['file'] . ': ' . $file . '<br />' . $txt['line'] . ': ' . $line;
 	else
 		$context['error_message'] = $txt['try_again'];
 
+	// A database error is often the sign of a database in need of upgrade.  Check forum versions, and if not identical suggest an upgrade... (not for Demo/CVS versions!)
+	if (allowedTo('admin_forum') && !empty($forum_version) && $forum_version != 'SMF ' . @$modSettings['smfVersion'] && strpos($forum_version, 'Demo') === false && strpos($forum_version, 'CVS') === false)
+		$context['error_message'] .= '<br /><br />' . sprintf($txt['database_error_versions'], $forum_version, $modSettings['smfVersion']);
+
 	if (allowedTo('admin_forum') && isset($db_show_debug) && $db_show_debug === true)
 	{
-		$context['error_message'] .= '<br><br>' . nl2br($db_string);
+		$context['error_message'] .= '<br /><br />' . nl2br($db_string);
 	}
 
 	// It's already been logged... don't log it again.
 	fatal_error($context['error_message'], false);
 }
 
-/**
- * Inserts data into a table
- *
- * @param string $method The insert method - can be 'replace', 'ignore' or 'insert'
- * @param string $table The table we're inserting the data into
- * @param array $columns An array of the columns we're inserting the data into. Should contain 'column' => 'datatype' pairs
- * @param array $data The data to insert
- * @param array $keys The keys for the table
- * @param int returnmode 0 = nothing(default), 1 = last row id, 2 = all rows id as array; every mode runs only with method = ''
- * @param object $connection The connection to use (if null, $db_connection is used)
- * @return value of the first key, behavior based on returnmode
- */
-function smf_db_insert($method = 'replace', $table, $columns, $data, $keys, $returnmode = 0, $connection = null)
+// Insert some data...
+function smf_db_insert($method = 'replace', $table, $columns, $data, $keys, $disable_trans = false, $connection = null)
 {
 	global $smcFunc, $db_connection, $db_prefix;
 
@@ -823,51 +663,30 @@ function smf_db_insert($method = 'replace', $table, $columns, $data, $keys, $ret
 		),
 		$connection
 	);
-	
-	if(!empty($keys) && (count($keys) > 0) && $method == '' && $returnmode > 0)
-	{
-		if ($returnmode == 1)
-			$return_var = smf_db_insert_id($table, $keys[0]) + count($insertRows) - 1;
-		else if ($returnmode == 2)
-		{
-			$return_var = array();
-			$count = count($insertRows);
-			$start = smf_db_insert_id($table, $keys[0]);
-			for ($i = 0; $i < $count; $i++ )
-				$return_var[] = $start + $i;
-		}
-		return $return_var;
-	}
 }
 
-/**
- * This function tries to work out additional error information from a back trace.
- *
- * @param string $error_message The error message
- * @param string $log_message The message to log
- * @param string|bool $error_type What type of error this is
- * @param string $file The file the error occurred in
- * @param int $line What line of $file the code which generated the error is on
- * @return void|array Returns an array with the file and line if $error_type is 'return'
- */
+// This function tries to work out additional error information from a back trace.
 function smf_db_error_backtrace($error_message, $log_message = '', $error_type = false, $file = null, $line = null)
 {
 	if (empty($log_message))
 		$log_message = $error_message;
 
-	foreach (debug_backtrace() as $step)
+	if (function_exists('debug_backtrace'))
 	{
-		// Found it?
-		if (strpos($step['function'], 'query') === false && !in_array(substr($step['function'], 0, 7), array('smf_db_', 'preg_re', 'db_erro', 'call_us')) && strpos($step['function'], '__') !== 0)
+		foreach (debug_backtrace() as $step)
 		{
-			$log_message .= '<br>Function: ' . $step['function'];
-			break;
-		}
+			// Found it?
+			if (strpos($step['function'], 'query') === false && !in_array(substr($step['function'], 0, 7), array('smf_db_', 'preg_re', 'db_erro', 'call_us')) && substr($step['function'], 0, 2) != '__')
+			{
+				$log_message .= '<br />Function: ' . $step['function'];
+				break;
+			}
 
-		if (isset($step['line']))
-		{
-			$file = $step['file'];
-			$line = $step['line'];
+			if (isset($step['line']))
+			{
+				$file = $step['file'];
+				$line = $step['line'];
+			}
 		}
 	}
 
@@ -892,14 +711,9 @@ function smf_db_error_backtrace($error_message, $log_message = '', $error_type =
 		trigger_error($error_message . ($line !== null ? '<em>(' . basename($file) . '-' . $line . ')</em>' : ''));
 }
 
-/**
- * Escape the LIKE wildcards so that they match the character and not the wildcard.
- *
- * @param string $string The string to escape
- * @param bool $translate_human_wildcards If true, turns human readable wildcards into SQL wildcards.
- * @return string The escaped string
- */
-function smf_db_escape_wildcard_string($string, $translate_human_wildcards = false)
+// Escape the LIKE wildcards so that they match the character and not the wildcard.
+// The optional second parameter turns human readable wildcards into SQL wildcards.
+function smf_db_escape_wildcard_string($string, $translate_human_wildcards=false)
 {
 	$replacements = array(
 		'%' => '\%',
@@ -914,20 +728,4 @@ function smf_db_escape_wildcard_string($string, $translate_human_wildcards = fal
 
 	return strtr($string, $replacements);
 }
-
-/**
- * Validates whether the resource is a valid mysqli instance.
- * Mysqli uses objects rather than resource. https://bugs.php.net/bug.php?id=42797
- *
- * @param mixed $result The string to test
- * @return bool True if it is, false otherwise
- */
-function smf_is_resource($result)
-{
-	if ($result instanceof mysqli_result)
-		return true;
-
-	return false;
-}
-
 ?>

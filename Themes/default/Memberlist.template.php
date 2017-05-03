@@ -3,58 +3,63 @@
  * Simple Machines Forum (SMF)
  *
  * @package SMF
- * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @author Simple Machines
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
-/**
- * Displays a sortable listing of all members registered on the forum.
- */
+// Displays a sortable listing of all members registered on the forum.
 function template_main()
 {
-	global $context, $settings, $scripturl, $txt;
+	global $context, $settings, $options, $scripturl, $txt;
+
+	// Build the memberlist button array.
+	$memberlist_buttons = array(
+			'view_all_members' => array('text' => 'view_all_members', 'image' => 'mlist.gif', 'lang' => true, 'url' => $scripturl . '?action=mlist' . ';sa=all', 'active'=> true),
+			'mlist_search' => array('text' => 'mlist_search', 'image' => 'mlist.gif', 'lang' => true, 'url' => $scripturl . '?action=mlist' . ';sa=search'),
+		);
 
 	echo '
 	<div class="main_section" id="memberlist">
-		<div class="pagesection">
-			', template_button_strip($context['memberlist_buttons'], 'right'), '
-			<div class="pagelinks floatleft">', $context['page_index'], '</div>
-		</div>
 		<div class="cat_bar">
-			<h3 class="catbg">
+			<h4 class="catbg">
 				<span class="floatleft">', $txt['members_list'], '</span>';
 		if (!isset($context['old_search']))
 				echo '
 				<span class="floatright">', $context['letter_links'], '</span>';
 		echo '
-			</h3>
+			</h4>
+		</div>
+		<div class="pagesection">
+			', template_button_strip($memberlist_buttons, 'right'), '
+			<div class="pagelinks floatleft">', $txt['pages'], ': ', $context['page_index'], '</div>
 		</div>';
 
 	echo '
-		<div id="mlist">
-			<table class="table_grid">
+		<div id="mlist" class="tborder topic_table">
+			<table class="table_grid" cellspacing="0" width="100%">
 			<thead>
-				<tr class="title_bar">';
+				<tr class="catbg">';
 
 	// Display each of the column headers of the table.
-	foreach ($context['columns'] as $key => $column)
+	foreach ($context['columns'] as $column)
 	{
-		// @TODO maybe find something nicer?
-		if ($key == 'email_address' && !$context['can_send_email'])
-			continue;
-
-		// This is a selected column, so underline it or some such.
-		if ($column['selected'])
+		// We're not able (through the template) to sort the search results right now...
+		if (isset($context['old_search']))
 			echo '
-					<th scope="col" class="', $key, isset($column['class']) ? ' ' . $column['class'] : '', ' selected" style="width: auto;"' . (isset($column['colspan']) ? ' colspan="' . $column['colspan'] . '"' : '') . '>
-						<a href="' . $column['href'] . '" rel="nofollow">' . $column['label'] . '</a><span class="generic_icons sort_' . $context['sort_direction'] . '"></span></th>';
+					<th scope="col" class="', isset($column['class']) ? ' ' . $column['class'] : '', '"', isset($column['width']) ? ' width="' . $column['width'] . '"' : '', isset($column['colspan']) ? ' colspan="' . $column['colspan'] . '"' : '', '>
+						', $column['label'], '</th>';
+		// This is a selected column, so underline it or some such.
+		elseif ($column['selected'])
+			echo '
+					<th scope="col" class="', isset($column['class']) ? ' ' . $column['class'] : '', '" style="width: auto;"' . (isset($column['colspan']) ? ' colspan="' . $column['colspan'] . '"' : '') . ' nowrap="nowrap">
+						<a href="' . $column['href'] . '" rel="nofollow">' . $column['label'] . ' <img src="' . $settings['images_url'] . '/sort_' . $context['sort_direction'] . '.gif" alt="" /></a></th>';
 		// This is just some column... show the link and be done with it.
 		else
 			echo '
-					<th scope="col" class="', $key, isset($column['class']) ? ' ' . $column['class'] : '', '"', isset($column['width']) ? ' style="width: ' . $column['width'] . '"' : '', isset($column['colspan']) ? ' colspan="' . $column['colspan'] . '"' : '', '>
+					<th scope="col" class="', isset($column['class']) ? ' ' . $column['class'] : '', '"', isset($column['width']) ? ' width="' . $column['width'] . '"' : '', isset($column['colspan']) ? ' colspan="' . $column['colspan'] . '"' : '', '>
 						', $column['link'], '</th>';
 	}
 	echo '
@@ -68,26 +73,47 @@ function template_main()
 		foreach ($context['members'] as $member)
 		{
 			echo '
-				<tr class="windowbg"', empty($member['sort_letter']) ? '' : ' id="letter' . $member['sort_letter'] . '"', '>
-					<td class="centertext">
-						', $context['can_send_pm'] ? '<a href="' . $member['online']['href'] . '" title="' . $member['online']['text'] . '">' : '', $settings['use_image_buttons'] ? '<span class="' . ($member['online']['is_online'] == 1 ? 'on' : 'off') . '" title="' . $member['online']['text'] . '"></span>' : $member['online']['label'], $context['can_send_pm'] ? '</a>' : '', '
+				<tr ', empty($member['sort_letter']) ? '' : ' id="letter' . $member['sort_letter'] . '"', '>
+					<td class="windowbg2">
+						', $context['can_send_pm'] ? '<a href="' . $member['online']['href'] . '" title="' . $member['online']['text'] . '">' : '', $settings['use_image_buttons'] ? '<img src="' . $member['online']['image_href'] . '" alt="' . $member['online']['text'] . '" align="middle" />' : $member['online']['label'], $context['can_send_pm'] ? '</a>' : '', '
 					</td>
-					<td class="lefttext">', $member['link'], '</td>';
+					<td class="windowbg lefttext">', $member['link'], '</td>
+					<td class="windowbg2">', $member['show_email'] == 'no' ? '' : '<a href="' . $scripturl . '?action=emailuser;sa=email;uid=' . $member['id'] . '" rel="nofollow"><img src="' . $settings['images_url'] . '/email_sm.gif" alt="' . $txt['email'] . '" title="' . $txt['email'] . ' ' . $member['name'] . '" /></a>', '</td>';
 
 		if (!isset($context['disabled_fields']['website']))
 			echo '
-					<td class="centertext website_url">', $member['website']['url'] != '' ? '<a href="' . $member['website']['url'] . '" target="_blank" class="new_win"><span class="generic_icons www" title="' . $member['website']['title'] . '"></span></a>' : '', '</td>';
+					<td class="windowbg">', $member['website']['url'] != '' ? '<a href="' . $member['website']['url'] . '" target="_blank" class="new_win"><img src="' . $settings['images_url'] . '/www.gif" alt="' . $member['website']['title'] . '" title="' . $member['website']['title'] . '" /></a>' : '', '</td>';
+
+		// ICQ?
+		if (!isset($context['disabled_fields']['icq']))
+			echo '
+					<td class="windowbg2">', $member['icq']['link'], '</td>';
+
+		// AIM?
+		if (!isset($context['disabled_fields']['aim']))
+			echo '
+					<td class="windowbg2">', $member['aim']['link'], '</td>';
+
+		// YIM?
+		if (!isset($context['disabled_fields']['yim']))
+			echo '
+					<td class="windowbg2">', $member['yim']['link'], '</td>';
+
+		// MSN?
+		if (!isset($context['disabled_fields']['msn']))
+			echo '
+					<td class="windowbg2">', $member['msn']['link'], '</td>';
 
 		// Group and date.
 		echo '
-					<td class="centertext reg_group">', empty($member['group']) ? $member['post_group'] : $member['group'], '</td>
-					<td class="centertext reg_date">', $member['registered_date'], '</td>';
+					<td class="windowbg lefttext">', empty($member['group']) ? $member['post_group'] : $member['group'], '</td>
+					<td class="windowbg lefttext">', $member['registered_date'], '</td>';
 
 		if (!isset($context['disabled_fields']['posts']))
 		{
 			echo '
-					<td class="centertext" style="white-space: nowrap; width: 15px">', $member['posts'], '</td>
-					<td class="centertext statsbar" style="width: 120px">';
+					<td class="windowbg2" style="white-space: nowrap" width="15">', $member['posts'], '</td>
+					<td class="windowbg statsbar" width="120">';
 
 			if (!empty($member['post_percent']))
 				echo '
@@ -97,14 +123,6 @@ function template_main()
 
 			echo '
 					</td>';
-		}
-
-		// Show custom fields marked to be shown here
-		if (!empty($context['custom_profile_fields']['columns']))
-		{
-			foreach ($context['custom_profile_fields']['columns'] as $key => $column)
-				echo '
-					<td class="righttext">', $member['options'][$key], '</td>';
 		}
 
 		echo '
@@ -118,74 +136,81 @@ function template_main()
 					<td colspan="', $context['colspan'], '" class="windowbg">', $txt['search_no_results'], '</td>
 				</tr>';
 
-				echo '
+	// Show the page numbers again. (makes 'em easier to find!)
+	echo '
 			</tbody>
 			</table>
 		</div>';
 
-	// Show the page numbers again. (makes 'em easier to find!)
 	echo '
 		<div class="pagesection">
-			<div class="pagelinks floatleft">', $context['page_index'], '</div>';
+			<div class="pagelinks floatleft">', $txt['pages'], ': ', $context['page_index'], '</div>';
 
 	// If it is displaying the result of a search show a "search again" link to edit their criteria.
 	if (isset($context['old_search']))
 		echo '
-			<a class="button_link" href="', $scripturl, '?action=mlist;sa=search;search=', $context['old_search_value'], '">', $txt['mlist_search_again'], '</a>';
+			<div class="floatright">
+				<a href="', $scripturl, '?action=mlist;sa=search;search=', $context['old_search_value'], '">', $txt['mlist_search_again'], '</a>
+			</div>';
 	echo '
 		</div>
 	</div>';
 
 }
 
-/**
- * A page allowing people to search the member list.
- */
+// A page allowing people to search the member list.
 function template_search()
 {
-	global $context, $scripturl, $txt;
+	global $context, $settings, $options, $scripturl, $txt;
+
+	// Build the memberlist button array.
+	$memberlist_buttons = array(
+			'view_all_members' => array('text' => 'view_all_members', 'image' => 'mlist.gif', 'lang' => true, 'url' => $scripturl . '?action=mlist' . ';sa=all'),
+			'mlist_search' => array('text' => 'mlist_search', 'image' => 'mlist.gif', 'lang' => true, 'url' => $scripturl . '?action=mlist' . ';sa=search', 'active' => true),
+		);
 
 	// Start the submission form for the search!
 	echo '
 	<form action="', $scripturl, '?action=mlist;sa=search" method="post" accept-charset="', $context['character_set'], '">
 		<div id="memberlist">
-			<div class="pagesection">
-				', template_button_strip($context['memberlist_buttons'], 'right'), '
-			</div>
 			<div class="cat_bar">
 				<h3 class="catbg mlist">
-					<span class="generic_icons filter"></span>', $txt['mlist_search'], '
+					<span class="ie6_header floatleft">', !empty($settings['use_buttons']) ? '<img src="' . $settings['images_url'] . '/buttons/search.gif" alt="" class="icon" />' : '', $txt['mlist_search'], '</span>
 				</h3>
 			</div>
-			<div id="advanced_search" class="roundframe noup">
-				<dl id="mlist_search" class="settings">
-					<dt>
-						<label><strong>', $txt['search_for'], ':</strong></label>
-					</dt>
-					<dd>
-						<input type="text" name="search" value="', $context['old_search'], '" size="40" class="input_text">
-					</dd>
-					<dt>
-						<label><strong>', $txt['mlist_search_filter'], ':</strong></label>
-					</dt>
-					<dd>
-						<ul>';
+			<div class="pagesection">
+				', template_button_strip($memberlist_buttons, 'right'), '
+			</div>';
+	// Display the input boxes for the form.
+	echo '	<div id="memberlist_search" class="clear">
+				<span class="upperframe"><span></span></span>
+				<div class="roundframe">
+					<div id="mlist_search" class="flow_hidden">
+						<div id="search_term_input"><br />
+							<strong>', $txt['search_for'], ':</strong>
+							<input type="text" name="search" value="', $context['old_search'], '" size="35" class="input_text" /> <input type="submit" name="submit" value="' . $txt['search'] . '" class="button_submit" />
+						</div>
+						<span class="floatleft">';
 
+	$count = 0;
 	foreach ($context['search_fields'] as $id => $title)
 	{
 		echo '
-							<li>
-								<input type="checkbox" name="fields[]" id="fields-', $id, '" value="', $id, '"', in_array($id, $context['search_defaults']) ? ' checked' : '', ' class="input_check">
-								<label for="fields-', $id, '">', $title, '</label>
-							</li>';
+							<label for="fields-', $id, '"><input type="checkbox" name="fields[]" id="fields-', $id, '" value="', $id, '" ', in_array($id, $context['search_defaults']) ? 'checked="checked"' : '', ' class="input_check" />', $title, '</label><br />';
+	// Half way through?
+		if (round(count($context['search_fields']) / 2) == ++$count)
+			echo '
+						</span>
+						<span class="floatleft">';
 	}
-
-	echo '
-						</ul>
-					</dd>
-				</dl>
-				<input type="submit" name="submit" value="' . $txt['search'] . '" class="button_submit">
+		echo '
+						</span>
+					</div>
+				</div>
+				<span class="lowerframe"><span></span></span>
 			</div>
 		</div>
 	</form>';
 }
+
+?>

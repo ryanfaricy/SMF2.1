@@ -1,33 +1,34 @@
 <?php
 
 /**
- * Functions concerned with viewing queries, and is used for debugging.
- *
  * Simple Machines Forum (SMF)
  *
  * @package SMF
  * @author Simple Machines http://www.simplemachines.org
- * @copyright 2017 Simple Machines and individual contributors
+ * @copyright 2011 Simple Machines
  * @license http://www.simplemachines.org/about/smf/license.php BSD
  *
- * @version 2.1 Beta 3
+ * @version 2.0
  */
 
 if (!defined('SMF'))
-	die('No direct access...');
+	die('Hacking attempt...');
 
-/**
- * Show the database queries for debugging
- * What this does:
- * - Toggles the session variable 'view_queries'.
- * - Views a list of queries and analyzes them.
- * - Requires the admin_forum permission.
- * - Is accessed via ?action=viewquery.
- * - Strings in this function have not been internationalized.
- */
+/*	This file is concerned with viewing queries, and is used for debugging.
+	It contains only one function:
+
+	void ViewQuery()
+		- toggles the session variable 'view_queries'.
+		- views a list of queries and analyzes them.
+		- requires the admin_forum permission.
+		- is accessed via ?action=viewquery.
+		- strings in this function have not been internationalized.
+*/
+
+// See the queries....
 function ViewQuery()
 {
-	global $scripturl, $settings, $context, $db_connection, $boarddir, $smcFunc, $txt, $db_show_debug;
+	global $scripturl, $user_info, $settings, $context, $db_connection, $modSettings, $boarddir, $smcFunc, $txt, $db_show_debug;
 
 	// We should have debug mode enabled, as well as something to display!
 	if (!isset($db_show_debug) || $db_show_debug !== true || !isset($_SESSION['debug']))
@@ -51,12 +52,12 @@ function ViewQuery()
 
 	$query_id = isset($_REQUEST['qq']) ? (int) $_REQUEST['qq'] - 1 : -1;
 
-	echo '<!DOCTYPE html>
-<html', $context['right_to_left'] ? ' dir="rtl"' : '', '>
+	echo '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"', $context['right_to_left'] ? ' dir="rtl"' : '', '>
 	<head>
 		<title>', $context['forum_name_html_safe'], '</title>
-		<link rel="stylesheet" href="', $settings['theme_url'], '/css/index', $context['theme_variant'], '.css?alp21">
-		<style>
+		<link rel="stylesheet" type="text/css" href="', $settings['theme_url'], '/css/index.css" />
+		<style type="text/css">
 			body
 			{
 				margin: 1ex;
@@ -121,8 +122,8 @@ function ViewQuery()
 		echo '
 		<div id="qq', $q, '" style="margin-bottom: 2ex;">
 			<a', $is_select_query ? ' href="' . $scripturl . '?action=viewquery;qq=' . ($q + 1) . '#qq' . $q . '"' : '', ' style="font-weight: bold; text-decoration: none;">
-				', nl2br(str_replace("\t", '&nbsp;&nbsp;&nbsp;', $smcFunc['htmlspecialchars']($query_data['q']))), '
-			</a><br>';
+				', nl2br(str_replace("\t", '&nbsp;&nbsp;&nbsp;', htmlspecialchars($query_data['q']))), '
+			</a><br />';
 
 		if (!empty($query_data['f']) && !empty($query_data['l']))
 			echo sprintf($txt['debug_query_in_line'], $query_data['f'], $query_data['l']);
@@ -139,21 +140,21 @@ function ViewQuery()
 		if ($query_id == $q && $is_select_query)
 		{
 			$result = $smcFunc['db_query']('', '
-				EXPLAIN '.($smcFunc['db_title'] == 'PostgreSQL' ? 'ANALYZE ' : '') . $select,
+				EXPLAIN ' . $select,
 				array(
 				)
 			);
 			if ($result === false)
 			{
 				echo '
-		<table>
+		<table border="1" cellpadding="4" cellspacing="0" style="empty-cells: show; font-family: serif; margin-bottom: 2ex;">
 			<tr><td>', $smcFunc['db_error']($db_connection), '</td></tr>
 		</table>';
 				continue;
 			}
 
 			echo '
-		<table>';
+		<table border="1" rules="all" cellpadding="4" cellspacing="0" style="empty-cells: show; font-family: serif; margin-bottom: 2ex;">';
 
 			$row = $smcFunc['db_fetch_assoc']($result);
 
@@ -186,3 +187,5 @@ function ViewQuery()
 
 	obExit(false);
 }
+
+?>
